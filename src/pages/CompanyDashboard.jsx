@@ -37,50 +37,51 @@ export default function CompanyDashboard() {
   }
 
   function acceptApplication(application) {
-    const savedMissions = JSON.parse(
-      localStorage.getItem("shiftlyMissions") || "[]"
-    );
+  const missions = JSON.parse(
+    localStorage.getItem("shiftlyMissions") || "[]"
+  );
 
-    const updatedMissions = savedMissions.map((mission) => {
-      if (String(mission.id) === String(application.missionId)) {
-        return {
-          ...mission,
-          status: "Pourvue",
-          color: "#16a34a",
-          driver: application.driver.name,
-          driverId: application.driver.id,
-        };
-      }
+  const apps = JSON.parse(
+    localStorage.getItem("shiftlyApplications") || "[]"
+  );
 
-      return mission;
-    });
+  const updatedMissions = missions.map((mission) => {
+    if (String(mission.id) === String(application.missionId)) {
+      return {
+        ...mission,
+        status: "Pourvue",
+        color: "#16a34a",
+        driver: application.driver.name,
+        driverId: application.driver.id,
+      };
+    }
 
-    const updatedApplications = applications.map((app) => {
-      if (String(app.id) === String(application.id)) {
-        return {
-          ...app,
-          status: "Acceptée",
-        };
-      }
+    return mission;
+  });
 
-      return app;
-    });
+  const updatedApps = apps.map((app) => {
+    if (String(app.id) === String(application.id)) {
+      return {
+        ...app,
+        status: "Acceptée",
+      };
+    }
 
-    localStorage.setItem("shiftlyMissions", JSON.stringify(updatedMissions));
-    localStorage.setItem(
-      "shiftlyApplications",
-      JSON.stringify(updatedApplications)
-    );
+    return app;
+  });
 
-    setCreatedMissions(updatedMissions);
-    setApplications(updatedApplications);
+  localStorage.setItem("shiftlyMissions", JSON.stringify(updatedMissions));
+  localStorage.setItem("shiftlyApplications", JSON.stringify(updatedApps));
 
-    const refreshedMission = updatedMissions.find(
-      (mission) => String(mission.id) === String(application.missionId)
-    );
+  setCreatedMissions(updatedMissions);
+  setApplications(updatedApps);
 
-    setSelectedMission(refreshedMission || null);
-  }
+  const updatedMission = updatedMissions.find(
+    (mission) => String(mission.id) === String(application.missionId)
+  );
+
+  setSelectedMission(updatedMission || null);
+}
 
   function updateMission() {
     const updatedMissions = createdMissions.map((mission) =>
@@ -338,37 +339,45 @@ export default function CompanyDashboard() {
                 )}
 
                 {applications
-                  .filter((app) => app.missionId === selectedMission.id)
-                  .map((app) => (
-                    <div className="application-card" key={app.id}>
-                      <div>
-                        <strong>{app.driver.name}</strong>
-                        <p>{app.driver.city}</p>
-                        <p>
-                          {app.driver.permits} · FIMO {app.driver.fimo}
-                        </p>
-                        <p>
-                          {app.driver.experience} · ShiftScore{" "}
-                          {app.driver.shiftScore}
-                        </p>
-                      </div>
+  .filter(
+    (application) =>
+      String(application.missionId) === String(selectedMission.id)
+  )
+  .map((application) => (
+                    <div className="application-card" key={application.id}>
+  <div>
+    <strong>{application.driver.name}</strong>
 
-                      {app.status === "Acceptée" ? (
-                        <button className="accepted-btn">Acceptée</button>
-                      ) : (
-                        <button
-  type="button"
-  onClick={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    alert("Clic accepter OK");
-    acceptApplication(app);
-  }}
->
-  Accepter
-</button>
-                      )}
-                    </div>
+    <p>{application.driver.city}</p>
+
+    <p>
+      {application.driver.permits} · FIMO{" "}
+      {application.driver.fimo}
+    </p>
+
+    <p>
+      {application.driver.experience} · ShiftScore{" "}
+      {application.driver.shiftScore}
+    </p>
+  </div>
+
+  {application.status === "Acceptée" ? (
+    <button className="accepted-btn">
+      Acceptée
+    </button>
+  ) : (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        acceptApplication(application);
+      }}
+    >
+      Accepter
+    </button>
+  )}
+</div>
                   ))}
               </div>
 
