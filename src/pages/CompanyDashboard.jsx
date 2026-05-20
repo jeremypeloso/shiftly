@@ -36,6 +36,52 @@ export default function CompanyDashboard() {
     setSelectedMission(null);
   }
 
+  function acceptApplication(application) {
+    const savedMissions = JSON.parse(
+      localStorage.getItem("shiftlyMissions") || "[]"
+    );
+
+    const updatedMissions = savedMissions.map((mission) => {
+      if (String(mission.id) === String(application.missionId)) {
+        return {
+          ...mission,
+          status: "Pourvue",
+          color: "#16a34a",
+          driver: application.driver.name,
+          driverId: application.driver.id,
+        };
+      }
+
+      return mission;
+    });
+
+    const updatedApplications = applications.map((app) => {
+      if (String(app.id) === String(application.id)) {
+        return {
+          ...app,
+          status: "Acceptée",
+        };
+      }
+
+      return app;
+    });
+
+    localStorage.setItem("shiftlyMissions", JSON.stringify(updatedMissions));
+    localStorage.setItem(
+      "shiftlyApplications",
+      JSON.stringify(updatedApplications)
+    );
+
+    setCreatedMissions(updatedMissions);
+    setApplications(updatedApplications);
+
+    const refreshedMission = updatedMissions.find(
+      (mission) => String(mission.id) === String(application.missionId)
+    );
+
+    setSelectedMission(refreshedMission || null);
+  }
+
   function updateMission() {
     const updatedMissions = createdMissions.map((mission) =>
       mission.id === editMission.id ? editMission : mission
@@ -180,9 +226,7 @@ export default function CompanyDashboard() {
 
               <h3>{mission.title}</h3>
 
-              <p>
-                📍 {mission.pickup} → {mission.dropoff}
-              </p>
+              <p>📍 {mission.pickup} → {mission.dropoff}</p>
 
               <p>
                 📅 Départ : {new Date(mission.start).toLocaleString("fr-FR")}
@@ -287,8 +331,9 @@ export default function CompanyDashboard() {
               <div className="applications-section">
                 <h3>Candidatures reçues</h3>
 
-                {applications.filter((app) => app.missionId === selectedMission.id)
-                  .length === 0 && (
+                {applications.filter(
+                  (app) => app.missionId === selectedMission.id
+                ).length === 0 && (
                   <p className="no-app">Aucune candidature pour le moment.</p>
                 )}
 
@@ -308,7 +353,21 @@ export default function CompanyDashboard() {
                         </p>
                       </div>
 
-                      <button>Accepter</button>
+                      {app.status === "Acceptée" ? (
+                        <button className="accepted-btn">Acceptée</button>
+                      ) : (
+                        <button
+  type="button"
+  onClick={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    alert("Clic accepter OK");
+    acceptApplication(app);
+  }}
+>
+  Accepter
+</button>
+                      )}
                     </div>
                   ))}
               </div>
@@ -520,6 +579,11 @@ export default function CompanyDashboard() {
           background: linear-gradient(180deg, #2563eb, #1d4ed8);
           color: white;
           border: none;
+        }
+
+        .accepted-btn {
+          background: linear-gradient(180deg, #16a34a, #15803d) !important;
+          cursor: default !important;
         }
 
         .delete-btn {

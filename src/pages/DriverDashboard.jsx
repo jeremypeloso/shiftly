@@ -34,8 +34,8 @@ export default function DriverDashboard() {
 
     const assignedMissions = savedMissions.filter(
       (mission) =>
-        mission.driver === driverProfile.name &&
-        mission.status === "Pourvue"
+        mission.driverId === driverProfile.id &&
+mission.status === "Pourvue"
     );
 
     setOpenMissions(missionsOpen);
@@ -56,21 +56,23 @@ export default function DriverDashboard() {
     if (alreadyApplied) return;
 
     const newApplication = {
-      id: Date.now(),
-      missionId: mission.id,
-      missionTitle: mission.title,
-      status: "En attente",
-      driver: {
-        id: driverProfile.id,
-        name: "Yorick Martin",
-        city: "Limetz-Villez",
-        permits: "Permis D",
-        fimo: "À jour",
-        experience: "8 ans",
-        shiftScore: 92,
-        availability: "Disponible",
-      },
-    };
+  id: Date.now(),
+  missionId: mission.id,
+  missionTitle: mission.title,
+
+  driver: {
+    id: driverProfile.id,
+    name: driverProfile.name,
+    city: "Limetz-Villez",
+    permits: "Permis D",
+    fimo: "À jour",
+    experience: "8 ans",
+    shiftScore: 92,
+    availability: "Disponible",
+  },
+
+  status: "En attente",
+};
 
     localStorage.setItem(
       "shiftlyApplications",

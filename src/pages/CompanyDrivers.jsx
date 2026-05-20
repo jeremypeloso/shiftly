@@ -14,6 +14,35 @@ export default function CompanyDrivers() {
     setApplications(savedApplications);
   }, []);
 
+  function acceptApplication(application) {
+  const missions = JSON.parse(
+    localStorage.getItem("shiftlyMissions") || "[]"
+  );
+
+  const updatedMissions = missions.map((mission) =>
+    String(mission.id) === String(application.missionId)
+      ? {
+          ...mission,
+          status: "Pourvue",
+          color: "#16a34a",
+          driver: application.driver.name,
+          driverId: application.driver.id,
+        }
+      : mission
+  );
+
+  const updatedApplications = applications.map((app) =>
+    String(app.id) === String(application.id)
+      ? { ...app, status: "Acceptée" }
+      : app
+  );
+
+  localStorage.setItem("shiftlyMissions", JSON.stringify(updatedMissions));
+  localStorage.setItem("shiftlyApplications", JSON.stringify(updatedApplications));
+
+  setApplications(updatedApplications);
+}
+
   return (
     <main className="page">
       <header className="top">
@@ -79,9 +108,12 @@ export default function CompanyDrivers() {
                 Voir profil
               </button>
 
-              <button className="accept">
-                Accepter
-              </button>
+              <button
+  className="accept"
+  onClick={() => acceptApplication(app)}
+>
+  {app.status === "Acceptée" ? "Acceptée" : "Accepter"}
+</button>
             </div>
           </div>
         ))}
