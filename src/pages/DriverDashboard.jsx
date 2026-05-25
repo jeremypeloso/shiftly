@@ -1,90 +1,458 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import { supabase } from "../lib/supabase";
+import { getCurrentUser } from "../lib/auth";
 
 export default function DriverDashboard() {
+  const navigate = useNavigate();
+
   const [openMissions, setOpenMissions] = useState([]);
   const [myMissions, setMyMissions] = useState([]);
+  const [driverProfile, setDriverProfile] = useState(null);
+  const [invitations, setInvitations] = useState([]);
+  const [selectedMission, setSelectedMission] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const driverProfile = {
-    id: "driver_001",
-    name: "Yorick Martin",
-  };
+  const actionLockRef = useRef(false);
+  const loadIdRef = useRef(0);
 
-  useEffect(() => {
-    const savedMissions = JSON.parse(
-      localStorage.getItem("shiftlyMissions") || "[]"
+  async function logout() {
+    await supabase.auth.signOut();
+    navigate("/login");
+  }
+
+  function safeNavigate(path) {
+  if (actionLockRef.current) return;
+
+  actionLockRef.current = true;
+
+  setTimeout(() => {
+    navigate(path);
+    actionLockRef.current = false;
+  }, 150);
+}
+
+  function calculateMatchScore(mission, driver) {
+    let score = 0;
+    const missionDate = String(mission.start_time || "").slice(0, 10);
+
+    if (driver.availabilityDays?.includes(missionDate)) score += 30;
+
+    if (
+      driver.preferredDepartments?.includes(mission.pickup_department) ||
+      driver.preferredDepartments?.includes("France entière") ||
+      driver.preferredDepartments?.includes("Europe")
+    ) {
+      score += 25;
+    }
+
+    if (
+      mission.required_permits?.some((permit) =>
+        driver.permits?.includes(permit)
+      )
+    ) {
+      score += 20;
+    }
+
+    if (
+      mission.required_documents?.includes("FCO") &&
+      driver.fcoStatus === "À jour"
+    ) {
+      score += 10;
+    }
+
+    if (
+      mission.required_documents?.includes("RCPRO") &&
+      driver.rcproStatus === "Oui"
+    ) {
+      score += 10;
+    }
+
+    if (driver.missionTypes?.includes(mission.mission_type)) score += 5;
+
+    return score;
+  }
+
+  const loadDriverData = useCallback(async () => {
+    const loadId = ++loadIdRef.current;
+
+    const user = await getCurrentUser();
+
+    if (!user) {
+  console.warn("Session absente temporairement");
+  return;
+}
+
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError) {
+      console.error(profileError);
+      return;
+    }
+
+    const currentDriver = {
+      id: user.id,
+      fullName: profileData.full_name || "Conducteur",
+name: profileData.full_name || "Conducteur",
+      city: profileData.city || "",
+      permits: profileData.permits || [],
+      fcoStatus: profileData.fco_status || "",
+      rcproStatus: profileData.rcpro_status || "",
+      experience: profileData.experience || "",
+      availability: profileData.availability || "",
+      availabilityDays: profileData.availability_days || [],
+      preferredDepartments: profileData.preferred_departments || [],
+      missionTypes: profileData.mission_types || [],
+      shiftScore: profileData.shift_score ?? 0
+    };
+
+    const { data: missionsData, error: missionsError } = await supabase
+      .from("missions")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (missionsError) {
+      console.error(missionsError);
+      return;
+    }
+
+    const { data: applicationsData, error: applicationsError } = await supabase
+      .from("applications")
+      .select("*");
+
+    if (applicationsError) {
+      console.error(applicationsError);
+      return;
+    }
+
+    const { data: invitationsData, error: invitationsError } = await supabase
+      .from("mission_invitations")
+      .select(`
+        *,
+        missions (*)
+      `)
+      .eq("driver_id", currentDriver.id)
+      .order("created_at", { ascending: false });
+
+    if (invitationsError) {
+      console.error(invitationsError);
+      return;
+    }
+
+    const formattedMissions = missionsData.map((mission) => ({
+      id: mission.id,
+      title: mission.title,
+      status: mission.status,
+      start: mission.start_time,
+      end: mission.end_time,
+      color: mission.color,
+      pickup: mission.pickup,
+      dropoff: mission.dropoff,
+      pickupDepartment: mission.pickup_department,
+      requiredPermits: mission.required_permits || [],
+      requiredDocuments: mission.required_documents || [],
+      driver: mission.driver_name,
+      driverId: mission.driver_id,
+      vehicle: mission.vehicle,
+      type: mission.mission_type,
+      passengers: mission.passengers,
+      price: mission.price,
+      comment: mission.comment,
+      documents: mission.documents,
+      matchScore: calculateMatchScore(mission, currentDriver),
+      invoice_status: mission.invoice_status,
+      applied: applicationsData.some(
+        (app) =>
+          String(app.mission_id) === String(mission.id) &&
+          String(app.driver_id) === String(currentDriver.id) &&
+          (app.status === "En attente" || app.status === "Acceptée")
+      ),
+    }));
+
+    if (loadId !== loadIdRef.current) return;
+
+    setDriverProfile(currentDriver);
+    setInvitations(invitationsData || []);
+
+    setOpenMissions(
+      formattedMissions
+        .filter((mission) => mission.status === "Ouverte")
+        .sort((a, b) => b.matchScore - a.matchScore)
     );
 
-    const applications = JSON.parse(
-      localStorage.getItem("shiftlyApplications") || "[]"
-    );
-
-    const missionsOpen = savedMissions
-      .filter((mission) => mission.status === "Ouverte")
-      .map((mission) => ({
-        ...mission,
-        applied: applications.some(
-          (app) =>
-            app.missionId === mission.id &&
-            app.driver.id === driverProfile.id
-        ),
-      }));
-
-    const assignedMissions = savedMissions.filter(
-      (mission) =>
-        mission.driverId === driverProfile.id &&
-mission.status === "Pourvue"
-    );
-
-    setOpenMissions(missionsOpen);
-    setMyMissions(assignedMissions);
-  }, []);
-
-  function applyToMission(mission) {
-    const applications = JSON.parse(
-      localStorage.getItem("shiftlyApplications") || "[]"
-    );
-
-    const alreadyApplied = applications.some(
-      (app) =>
-        app.missionId === mission.id &&
-        app.driver.id === driverProfile.id
-    );
-
-    if (alreadyApplied) return;
-
-    const newApplication = {
-  id: Date.now(),
-  missionId: mission.id,
-  missionTitle: mission.title,
-
-  driver: {
-    id: driverProfile.id,
-    name: driverProfile.name,
-    city: "Limetz-Villez",
-    permits: "Permis D",
-    fimo: "À jour",
-    experience: "8 ans",
-    shiftScore: 92,
-    availability: "Disponible",
-  },
-
-  status: "En attente",
-};
-
-    localStorage.setItem(
-      "shiftlyApplications",
-      JSON.stringify([...applications, newApplication])
-    );
-
-    setOpenMissions((prev) =>
-      prev.map((item) =>
-        item.id === mission.id ? { ...item, applied: true } : item
+    setMyMissions(
+      formattedMissions.filter(
+        (mission) =>
+          String(mission.driverId) === String(currentDriver.id) &&
+          mission.status === "Pourvue"
       )
     );
+  }, []);
+
+  useEffect(() => {
+  let reloadTimeout = null;
+
+  const startRealtime = () => {
+    const reloadSafely = () => {
+      if (actionLockRef.current) return;
+
+      clearTimeout(reloadTimeout);
+
+      reloadTimeout = setTimeout(() => {
+        loadDriverData();
+      }, 500);
+    };
+
+    const missionsChannel = supabase
+      .channel("missions-live-driver")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "missions",
+        },
+        reloadSafely
+      )
+      .subscribe();
+
+    const applicationsChannel = supabase
+      .channel("applications-live-driver")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "applications",
+        },
+        reloadSafely
+      )
+      .subscribe();
+
+    const invitationsChannel = supabase
+      .channel("invitations-live-driver")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "mission_invitations",
+        },
+        reloadSafely
+      )
+      .subscribe();
+
+    return () => {
+      clearTimeout(reloadTimeout);
+
+      supabase.removeChannel(missionsChannel);
+      supabase.removeChannel(applicationsChannel);
+      supabase.removeChannel(invitationsChannel);
+    };
+  };
+
+  loadDriverData();
+
+  const cleanup = startRealtime();
+
+  return () => {
+    if (cleanup) cleanup();
+  };
+}, [loadDriverData]);
+
+  async function applyToMission(mission) {
+    if (actionLockRef.current) return;
+
+    actionLockRef.current = true;
+    setActionLoading(true);
+
+    try {
+      if (!driverProfile) {
+        alert("Profil conducteur non chargé");
+        return;
+      }
+
+      const alreadyApplied = openMissions.find(
+        (item) => item.id === mission.id && item.applied
+      );
+
+      if (alreadyApplied) return;
+
+      const { error } = await supabase.from("applications").insert([
+        {
+          mission_id: mission.id,
+          status: "En attente",
+          driver_id: driverProfile.id,
+          driver_name: driverProfile.name,
+          driver_city: driverProfile.city,
+          driver_permits: driverProfile.permits.join(", "),
+          driver_fimo: driverProfile.fcoStatus,
+          driver_experience: driverProfile.experience,
+          driver_shift_score: driverProfile.shiftScore,
+          driver_availability: driverProfile.availability,
+        },
+      ]);
+
+      if (error) {
+        console.error(error);
+        alert("Erreur candidature");
+        return;
+      }
+
+      await loadDriverData();
+    } finally {
+      actionLockRef.current = false;
+      setActionLoading(false);
+    }
   }
+
+  async function acceptInvitation(invitation) {
+  if (actionLockRef.current) return;
+
+  actionLockRef.current = true;
+  setActionLoading(true);
+
+  try {
+    if (!driverProfile) return;
+
+    const { error: applicationError } = await supabase
+      .from("applications")
+      .insert([
+        {
+          mission_id: invitation.mission_id,
+          status: "Acceptée",
+          driver_id: driverProfile.id,
+          driver_name: driverProfile.name,
+          driver_city: driverProfile.city,
+          driver_permits: driverProfile.permits.join(", "),
+          driver_fimo: driverProfile.fcoStatus,
+          driver_experience: driverProfile.experience,
+          driver_shift_score: driverProfile.shiftScore,
+          driver_availability: driverProfile.availability,
+        },
+      ]);
+
+    if (applicationError) {
+      console.error(applicationError);
+      alert("Erreur candidature");
+      return;
+    }
+
+    const { error: missionError } = await supabase
+      .from("missions")
+      .update({
+        status: "Pourvue",
+        color: "#16a34a",
+        driver_id: driverProfile.id,
+        driver_name: driverProfile.name,
+      })
+      .eq("id", invitation.mission_id);
+
+    if (missionError) {
+      console.error(missionError);
+      alert("Erreur passage mission en pourvue");
+      return;
+    }
+
+    const newShiftScore = Math.min(
+  100,
+  (driverProfile.shiftScore ?? 70) + 5
+);
+
+console.log("Nouveau ShiftScore :", newShiftScore);
+
+const { error: scoreError } = await supabase
+  .from("profiles")
+  .update({
+    shift_score: newShiftScore,
+  })
+  .eq("id", driverProfile.id);
+
+if (scoreError) {
+  console.error(scoreError);
+  alert("Erreur mise à jour ShiftScore");
+  return;
+}
+
+await supabase.from("shift_score_events").insert([
+  {
+    driver_id: driverProfile.id,
+    mission_id: invitation.mission_id,
+    event_type: "Invitation acceptée",
+    points: 5,
+  },
+]);
+
+    const { error: invitationError } = await supabase
+      .from("mission_invitations")
+      .update({
+        status: "Acceptée",
+      })
+      .eq("id", invitation.id);
+
+    if (invitationError) {
+      console.error(invitationError);
+      alert("Erreur invitation");
+      return;
+    }
+
+    await loadDriverData();
+  } finally {
+    actionLockRef.current = false;
+    setActionLoading(false);
+  }
+}
+
+  async function refuseInvitation(invitation) {
+    if (actionLockRef.current) return;
+
+    actionLockRef.current = true;
+    setActionLoading(true);
+
+    try {
+      const { error } = await supabase
+        .from("mission_invitations")
+        .update({ status: "Refusée" })
+        .eq("id", invitation.id);
+
+      if (error) {
+        console.error(error);
+        alert("Erreur refus invitation");
+        return;
+      }
+
+      await loadDriverData();
+    } finally {
+      actionLockRef.current = false;
+      setActionLoading(false);
+    }
+  }
+
+  const estimatedRevenue = myMissions
+  .filter((mission) => mission.invoice_status !== "Payée")
+  .reduce((total, mission) => {
+    const price = parseInt(String(mission.price || "0").replace(/\D/g, ""), 10);
+    return total + (isNaN(price) ? 0 : price);
+  }, 0);
+
+const totalRevenue = myMissions
+  .filter((mission) => mission.invoice_status === "Payée")
+  .reduce((total, mission) => {
+    const price = parseInt(String(mission.price || "0").replace(/\D/g, ""), 10);
+    return total + (isNaN(price) ? 0 : price);
+  }, 0);
+
+  const pendingInvitations = invitations.filter(
+    (invitation) =>
+      invitation.status !== "Acceptée" && invitation.status !== "Refusée"
+  );
 
   return (
     <div className="dashboard">
@@ -92,22 +460,49 @@ mission.status === "Pourvue"
         <h2>Shiftly</h2>
 
         <nav>
-          <button className="active">Dashboard</button>
-          <button>Missions</button>
-          <button>Disponibilités</button>
-          <button>Profil</button>
-          <button>Messages</button>
+          <button
+  className="menu-btn"
+  onClick={() => safeNavigate("/driver/missions")}
+>
+  Missions
+
+  {myMissions.length > 0 && (
+    <span className="badge">
+      {myMissions.length}
+    </span>
+  )}
+</button>
+
+<button onClick={() => safeNavigate("/driver/availability")}>
+  Disponibilités
+</button>
+
+<button onClick={() => safeNavigate("/driver/profile")}>
+  Profil
+</button>
+
+          <button className="logout-btn" onClick={logout}>
+            Déconnexion
+          </button>
         </nav>
       </aside>
 
       <main className="content">
         <header className="top">
           <div>
-            <p>Bonjour Yorick 👋</p>
+            <p>
+  Bonjour{" "}
+  {driverProfile?.name ||
+    driverProfile?.fullName ||
+    "conducteur"}{" "}
+  👋
+</p>
             <h1>Tableau conducteur</h1>
           </div>
 
-          <div className="score">⭐ ShiftScore 92</div>
+          <div className="score">
+            ⭐ ShiftScore {driverProfile?.shiftScore ?? 0}
+          </div>
         </header>
 
         <section className="cards">
@@ -122,9 +517,23 @@ mission.status === "Pourvue"
           </div>
 
           <div className="card">
-            <span>Revenus estimés</span>
-            <strong>2 450€</strong>
+            <span>Invitations reçues</span>
+            <strong>{pendingInvitations.length}</strong>
           </div>
+
+          <div className="card revenue-card">
+  <div>
+    <span>Revenus estimés</span>
+    <strong>{estimatedRevenue} €</strong>
+  </div>
+
+  <div className="divider"></div>
+
+  <div>
+    <span>Revenus total</span>
+    <strong>{totalRevenue} €</strong>
+  </div>
+</div>
         </section>
 
         <section className="calendar-section">
@@ -149,8 +558,85 @@ mission.status === "Pourvue"
                 start: mission.start,
                 end: mission.end,
                 color: "#16a34a",
+                extendedProps: mission,
               }))}
+              eventClick={(info) => {
+                setSelectedMission(info.event.extendedProps);
+              }}
             />
+          </div>
+        </section>
+
+        {selectedMission && (
+          <div
+            className="modal-overlay"
+            onClick={() => setSelectedMission(null)}
+          >
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <button className="close" onClick={() => setSelectedMission(null)}>
+                ✕
+              </button>
+
+              <h2>{selectedMission.title}</h2>
+
+              <p>📍 {selectedMission.pickup} → {selectedMission.dropoff}</p>
+              <p>📅 {new Date(selectedMission.start).toLocaleString("fr-FR")}</p>
+              <p>🔁 {new Date(selectedMission.end).toLocaleString("fr-FR")}</p>
+              <p>🚍 {selectedMission.vehicle}</p>
+              <p>👥 {selectedMission.passengers}</p>
+              <p>💶 {selectedMission.price || "Prix non renseigné"}</p>
+              <p>📝 {selectedMission.comment || "Aucune consigne particulière"}</p>
+            </div>
+          </div>
+        )}
+
+        <section className="missions">
+          <div className="section-title">
+            <h2>Invitations entreprises</h2>
+            <span>{pendingInvitations.length} invitation(s)</span>
+          </div>
+
+          <div className="mission-list">
+            {pendingInvitations.length === 0 && (
+              <div className="empty">Aucune invitation reçue.</div>
+            )}
+
+            {pendingInvitations.map((invitation) => {
+              const mission = invitation.missions;
+
+              return (
+                <div className="mission" key={invitation.id}>
+                  <div>
+                    <strong>{mission?.title || "Mission"}</strong>
+                    <p>📍 {mission?.pickup} → {mission?.dropoff}</p>
+                    <p>
+                      📅{" "}
+                      {mission?.start_time
+                        ? new Date(mission.start_time).toLocaleString("fr-FR")
+                        : "Date non renseignée"}
+                    </p>
+                    <p>💶 {mission?.price || "Non renseigné"}</p>
+                  </div>
+
+                  <div className="mission-actions">
+                    <button
+                      disabled={actionLoading}
+                      onClick={() => acceptInvitation(invitation)}
+                    >
+                      {actionLoading ? "Chargement..." : "Accepter"}
+                    </button>
+
+                    <button
+                      disabled={actionLoading}
+                      className="refuse-btn"
+                      onClick={() => refuseInvitation(invitation)}
+                    >
+                      {actionLoading ? "Chargement..." : "Refuser"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -162,47 +648,56 @@ mission.status === "Pourvue"
 
           <div className="mission-list">
             {openMissions.length === 0 && (
-              <div className="empty">
-                Aucune mission ouverte pour le moment.
-              </div>
+              <div className="empty">Aucune mission ouverte pour le moment.</div>
             )}
 
             {openMissions.map((mission) => (
               <div className="mission" key={mission.id}>
                 <div>
                   <strong>{mission.title}</strong>
-                  <p>
-                    📍 {mission.pickup} → {mission.dropoff}
-                  </p>
-                  <p>
-  📅 Départ :{" "}
-  {new Date(mission.start).toLocaleString("fr-FR")}
-</p>
-
-<p>
-  🔁 Retour :{" "}
-  {new Date(mission.end).toLocaleString("fr-FR")}
-</p>
-                  <p>
-                    🚍 {mission.vehicle} · 👥 {mission.passengers}
-                  </p>
-
+                  <p>📍 {mission.pickup} → {mission.dropoff}</p>
+                  <p>📅 Départ : {new Date(mission.start).toLocaleString("fr-FR")}</p>
+                  <p>🔁 Retour : {new Date(mission.end).toLocaleString("fr-FR")}</p>
+                  <p>🚍 {mission.vehicle} · 👥 {mission.passengers}</p>
                   <p>💶 {mission.price || "Prix non renseigné"}</p>
-
-                  <p>
-  📝 {mission.comment || "Aucune consigne particulière"}
-</p>
+                  <p>📝 {mission.comment || "Aucune consigne particulière"}</p>
+                 
                 </div>
 
-                {mission.applied ? (
-                  <button className="applied-btn">
-                    ✓ Candidature envoyée
+                <div className="mission-actions">
+                  <button
+                    className={
+                      mission.matchScore >= 75
+                        ? "match-btn excellent"
+                        : mission.matchScore >= 45
+                        ? "match-btn good"
+                        : "match-btn weak"
+                    }
+                    disabled
+                  >
+                    {mission.matchScore >= 75
+                      ? "Excellent match"
+                      : mission.matchScore >= 45
+                      ? "Compatible"
+                      : "Faible match"}{" "}
+                    {mission.matchScore}%
                   </button>
-                ) : (
-                  <button onClick={() => applyToMission(mission)}>
-                    Postuler
-                  </button>
-                )}
+
+                  {mission.applied ? (
+  <button className="applied-btn" disabled>
+    ✓ Candidature envoyée
+  </button>
+) : (
+  <>
+    <button
+      disabled={actionLoading}
+      onClick={() => applyToMission(mission)}
+    >
+      {actionLoading ? "Chargement..." : "Postuler"}
+    </button>
+  </>
+)}
+                </div>
               </div>
             ))}
           </div>
@@ -221,6 +716,33 @@ mission.status === "Pourvue"
             linear-gradient(135deg, #0f172a 0%, #162033 52%, #1f2937 100%);
         }
 
+        button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          pointer-events: none;
+        }
+
+        .menu-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.badge {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #16a34a;
+  color: white;
+  font-size: 12px;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
         .sidebar {
           width: 260px;
           padding: 32px;
@@ -228,6 +750,19 @@ mission.status === "Pourvue"
           border-right: 1px solid rgba(255,255,255,0.08);
           flex-shrink: 0;
         }
+
+        .revenue-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.divider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(255,255,255,0.08);
+}
 
         .sidebar h2 {
           margin: 0;
@@ -259,10 +794,18 @@ mission.status === "Pourvue"
           border: none;
         }
 
+        .logout-btn {
+          background: linear-gradient(180deg, #dc2626, #991b1b) !important;
+          color: white !important;
+          border: none !important;
+        }
+
         .content {
           flex: 1;
           padding: 40px;
           min-width: 0;
+          overflow-y: auto;
+          height: 100svh;
         }
 
         .top {
@@ -270,6 +813,7 @@ mission.status === "Pourvue"
           justify-content: space-between;
           align-items: center;
           gap: 20px;
+          padding: 18px 0 26px;
         }
 
         .top p {
@@ -295,7 +839,7 @@ mission.status === "Pourvue"
 
         .cards {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
+          grid-template-columns: repeat(4, 1fr);
           gap: 18px;
           margin-top: 40px;
         }
@@ -320,7 +864,8 @@ mission.status === "Pourvue"
           font-weight: 950;
         }
 
-        .calendar-section {
+        .calendar-section,
+        .missions {
           margin-top: 40px;
         }
 
@@ -376,10 +921,6 @@ mission.status === "Pourvue"
           font-weight: 800 !important;
         }
 
-        .missions {
-          margin-top: 40px;
-        }
-
         .section-title {
           display: flex;
           justify-content: space-between;
@@ -412,8 +953,17 @@ mission.status === "Pourvue"
           margin: 6px 0 0;
         }
 
+        .mission-actions {
+          display: flex;
+          flex-direction: row;
+          gap: 10px;
+          align-items: center;
+          min-width: 190px;
+        }
+
         .mission button,
-        .applied-btn {
+        .applied-btn,
+        .match-btn {
           min-width: 190px;
           padding: 12px 18px;
           border-radius: 999px;
@@ -432,12 +982,71 @@ mission.status === "Pourvue"
           cursor: default;
         }
 
+        .refuse-btn {
+          background: linear-gradient(180deg, #dc2626, #991b1b) !important;
+          color: white;
+        }
+
+        .match-btn {
+          font-weight: 900;
+          cursor: default;
+        }
+
+        .match-btn.excellent {
+          background: linear-gradient(180deg, #16a34a, #15803d);
+        }
+
+        .match-btn.good {
+          background: linear-gradient(180deg, #2563eb, #1d4ed8);
+        }
+
+        .match-btn.weak {
+          background: linear-gradient(180deg, #f97316, #c2410c);
+        }
+
         .empty {
           background: rgba(255,255,255,0.07);
           border: 1px solid rgba(255,255,255,0.1);
           border-radius: 20px;
           padding: 20px;
           color: #cbd5e1;
+        }
+
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(2,6,23,0.72);
+          backdrop-filter: blur(8px);
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
+          z-index: 999;
+          padding: 24px 20px;
+          overflow-y: auto;
+        }
+
+        .modal {
+          width: 100%;
+          max-width: 620px;
+          max-height: calc(100svh - 48px);
+          overflow-y: auto;
+          background: linear-gradient(180deg, #111827, #0f172a);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 28px;
+          padding: 28px;
+          color: white;
+          box-shadow: 0 40px 120px rgba(0,0,0,0.45);
+        }
+
+        .close {
+          float: right;
+          width: 42px;
+          height: 42px;
+          border-radius: 999px;
+          border: none;
+          background: rgba(255,255,255,0.08);
+          color: white;
+          cursor: pointer;
         }
 
         @media (max-width: 900px) {
@@ -455,10 +1064,16 @@ mission.status === "Pourvue"
 
           nav {
             margin-top: 18px;
+            display: flex;
             flex-direction: row;
             overflow-x: auto;
             gap: 10px;
-            padding-bottom: 4px;
+            padding-bottom: 14px;
+            scrollbar-width: none;
+          }
+
+          nav::-webkit-scrollbar {
+            display: none;
           }
 
           nav button {
@@ -469,6 +1084,8 @@ mission.status === "Pourvue"
 
           .content {
             padding: 24px 16px 40px;
+            overflow-y: auto;
+            height: auto;
           }
 
           .top {
@@ -487,7 +1104,7 @@ mission.status === "Pourvue"
           }
 
           .cards {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, 1fr);
             gap: 14px;
             margin-top: 28px;
           }
@@ -533,8 +1150,14 @@ mission.status === "Pourvue"
             align-items: flex-start;
           }
 
+          .mission-actions {
+            width: 100%;
+            flex-direction: row;
+          }
+
           .mission button,
-          .applied-btn {
+          .applied-btn,
+          .match-btn {
             width: 100%;
             min-width: 0;
           }

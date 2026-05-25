@@ -152,8 +152,16 @@ export default function Home() {
         }
 
         body {
-          overflow-y: auto;
+          overflow: hidden;
+height: 100svh;
         }
+
+        html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
 
         .home-page {
           width: 100%;
@@ -162,6 +170,8 @@ export default function Home() {
           position: relative;
           color: white;
           font-family: Inter, Arial, sans-serif;
+          height: 100svh;
+overflow: hidden;
 
           background:
             radial-gradient(circle at top left,

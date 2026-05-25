@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 
 export default function CompanyDrivers() {
   const navigate = useNavigate();
@@ -7,12 +8,24 @@ export default function CompanyDrivers() {
   const [applications, setApplications] = useState([]);
 
   useEffect(() => {
-    const savedApplications = JSON.parse(
-      localStorage.getItem("shiftlyApplications") || "[]"
-    );
+  loadApplications();
+}, []);
 
-    setApplications(savedApplications);
-  }, []);
+async function loadApplications() {
+  const { data, error } = await supabase
+    .from("applications")
+    .select("*")
+    .order("created_at", {
+      ascending: false,
+    });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  setApplications(data || []);
+}
 
   function acceptApplication(application) {
   const missions = JSON.parse(
@@ -36,9 +49,6 @@ export default function CompanyDrivers() {
       ? { ...app, status: "Acceptée" }
       : app
   );
-
-  localStorage.setItem("shiftlyMissions", JSON.stringify(updatedMissions));
-  localStorage.setItem("shiftlyApplications", JSON.stringify(updatedApplications));
 
   setApplications(updatedApplications);
 }
@@ -73,40 +83,44 @@ export default function CompanyDrivers() {
               {app.status}
             </span>
 
-            <h2>{app.driver.name}</h2>
+            <h2>{app.driver_name}</h2>
 
             <p>
-              Mission : {app.missionTitle}
+              Ville : {app.driver_city}
             </p>
 
             <p>
-              Ville : {app.driver.city}
+              {app.driver_permits} · FIMO {app.driver_fimo}
             </p>
 
             <p>
-              {app.driver.permits} · FIMO{" "}
-              {app.driver.fimo}
+              Expérience : {app.driver_experience}
             </p>
 
             <p>
-              Expérience :{" "}
-              {app.driver.experience}
+              ShiftScore : ⭐ {app.driver_shift_score}
             </p>
 
             <p>
-              ShiftScore : ⭐{" "}
-              {app.driver.shiftScore}
-            </p>
-
-            <p>
-              Disponibilité :{" "}
-              {app.driver.availability}
+              Disponibilité : {app.driver_availability}
             </p>
 
             <div className="actions">
-              <button>
-                Voir profil
-              </button>
+              <button
+  onClick={() =>
+    alert(
+      `Conducteur : ${app.driver_name}
+Ville : ${app.driver_city}
+Permis : ${app.driver_permits}
+FIMO : ${app.driver_fimo}
+Expérience : ${app.driver_experience}
+ShiftScore : ${app.driver_shift_score}
+Disponibilité : ${app.driver_availability}`
+    )
+  }
+>
+  Voir profil
+</button>
 
               <button
   className="accept"

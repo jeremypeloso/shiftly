@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import { supabase } from "../lib/supabase";
+import { getCurrentUser } from "../lib/auth";
+
 
 export default function CompanyDashboard() {
   const navigate = useNavigate();
@@ -11,130 +14,488 @@ export default function CompanyDashboard() {
   const [editMission, setEditMission] = useState(null);
   const [createdMissions, setCreatedMissions] = useState([]);
   const [applications, setApplications] = useState([]);
+  const [companyProfile, setCompanyProfile] = useState(null);
+  const [drivers, setDrivers] = useState([]);
+  const [missionInvitations, setMissionInvitations] = useState([]);
+  const actionLockRef = useRef(false);
+  const [missionToDelete, setMissionToDelete] = useState(null);
+
 
   useEffect(() => {
-    const savedMissions = JSON.parse(
-      localStorage.getItem("shiftlyMissions") || "[]"
-    );
+  if (!selectedMission) return;
 
-    const savedApplications = JSON.parse(
-      localStorage.getItem("shiftlyApplications") || "[]"
-    );
+  const updatedMission = createdMissions.find(
+    (mission) =>
+      String(mission.id) === String(selectedMission.id)
+  );
 
-    setCreatedMissions(savedMissions);
-    setApplications(savedApplications);
-  }, []);
-
-  function deleteMission(missionToDelete) {
-    const updatedMissions = createdMissions.filter(
-      (mission) => mission.id !== missionToDelete.id
-    );
-
-    localStorage.setItem("shiftlyMissions", JSON.stringify(updatedMissions));
-
-    setCreatedMissions(updatedMissions);
-    setSelectedMission(null);
+  if (updatedMission) {
+    setSelectedMission(updatedMission);
   }
+}, [createdMissions]);
+  
+  const loadCompanyData = useCallback(async () => {
+    const user = await getCurrentUser();
 
-  function acceptApplication(application) {
-  const missions = JSON.parse(
-    localStorage.getItem("shiftlyMissions") || "[]"
-  );
-
-  const apps = JSON.parse(
-    localStorage.getItem("shiftlyApplications") || "[]"
-  );
-
-  const updatedMissions = missions.map((mission) => {
-    if (String(mission.id) === String(application.missionId)) {
-      return {
-        ...mission,
-        status: "Pourvue",
-        color: "#16a34a",
-        driver: application.driver.name,
-        driverId: application.driver.id,
-      };
-    }
-
-    return mission;
-  });
-
-  const updatedApps = apps.map((app) => {
-    if (String(app.id) === String(application.id)) {
-      return {
-        ...app,
-        status: "Acceptée",
-      };
-    }
-
-    return app;
-  });
-
-  localStorage.setItem("shiftlyMissions", JSON.stringify(updatedMissions));
-  localStorage.setItem("shiftlyApplications", JSON.stringify(updatedApps));
-
-  setCreatedMissions(updatedMissions);
-  setApplications(updatedApps);
-
-  const updatedMission = updatedMissions.find(
-    (mission) => String(mission.id) === String(application.missionId)
-  );
-
-  setSelectedMission(updatedMission || null);
+    if (!user) {
+  console.warn("Session absente temporairement");
+  return;
 }
 
-  function updateMission() {
-    const updatedMissions = createdMissions.map((mission) =>
-      mission.id === editMission.id ? editMission : mission
-    );
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
 
-    localStorage.setItem("shiftlyMissions", JSON.stringify(updatedMissions));
+    if (profileError) {
+      console.error(profileError);
+      return;
+    }
 
-    setCreatedMissions(updatedMissions);
-    setSelectedMission(editMission);
-    setEditMission(null);
+    setCompanyProfile({
+  id: user.id,
+  email: user.email,
+  companyName:
+    profileData.company_name ||
+    profileData.full_name ||
+    user.email ||
+    "Entreprise",
+});
+
+    const { data: missionsData, error: missionsError } = await supabase
+      .from("missions")
+      .select("*")
+      .eq("company_id", user.id)
+      .order("created_at", { ascending: false });
+
+    if (missionsError) {
+      console.error(missionsError);
+      return;
+    }
+
+    const { data: applicationsData, error: applicationsError } = await supabase
+      .from("applications")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (applicationsError) {
+      console.error(applicationsError);
+      return;
+    }
+
+    const { data: driversData, error: driversError } = await supabase
+  .from("profiles")
+  .select("*")
+  .eq("role", "driver");
+
+if (driversError) {
+  console.error(driversError);
+  return;
+}
+
+setDrivers(driversData || []);
+
+const {
+  data: invitationsData,
+  error: invitationsError,
+} = await supabase
+  .from("mission_invitations")
+  .select("*");
+
+if (invitationsError) {
+  console.error(invitationsError);
+  return;
+}
+
+setMissionInvitations(invitationsData || []);
+
+    const formattedMissions = missionsData.map((mission) => ({
+  id: mission.id,
+  title: mission.title,
+      status: mission.status,
+      start: mission.start_time,
+      end: mission.end_time,
+      color: mission.color || "#2563eb",
+      pickup: mission.pickup,
+      dropoff: mission.dropoff,
+      driver: mission.driver_name || "Non attribué",
+      driverId: mission.driver_id,
+      vehicle: mission.vehicle,
+      type: mission.mission_type,
+      passengers: mission.passengers,
+      price: mission.price,
+      comment: mission.comment,
+      documents: mission.documents,
+      pickupDepartment: mission.pickup_department,
+requiredPermits: mission.required_permits || [],
+requiredDocuments: mission.required_documents || [],
+    }));
+
+    const formattedApplications = applicationsData.map((app) => ({
+      id: app.id,
+      missionId: app.mission_id,
+      status: app.status,
+      driver: {
+        id: app.driver_id,
+        name: app.driver_name,
+        city: app.driver_city,
+        permits: app.driver_permits,
+        fimo: app.driver_fimo,
+        experience: app.driver_experience,
+        shiftScore: app.driver_shift_score,
+        availability: app.driver_availability,
+      },
+    }));
+
+    setCreatedMissions(formattedMissions);
+    setApplications(formattedApplications);
+  }, [navigate]);
+
+  useEffect(() => {
+  let reloadTimeout = null;
+
+  const reloadSafely = () => {
+    if (actionLockRef.current) return;
+
+    clearTimeout(reloadTimeout);
+
+    reloadTimeout = setTimeout(() => {
+      loadCompanyData();
+    }, 500);
+  };
+
+  const missionsChannel = supabase
+    .channel("missions-live-company")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "missions",
+      },
+      reloadSafely
+    )
+    .subscribe();
+
+  const applicationsChannel = supabase
+    .channel("applications-live-company")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "applications",
+      },
+      reloadSafely
+    )
+    .subscribe();
+
+  const invitationsChannel = supabase
+    .channel("invitations-live-company")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "mission_invitations",
+      },
+      reloadSafely
+    )
+    .subscribe();
+
+  loadCompanyData();
+
+  return () => {
+    clearTimeout(reloadTimeout);
+
+    supabase.removeChannel(missionsChannel);
+    supabase.removeChannel(applicationsChannel);
+    supabase.removeChannel(invitationsChannel);
+  };
+}, [loadCompanyData]);
+
+  async function logout() {
+    await supabase.auth.signOut();
+    navigate("/login");
   }
 
-  const missions = [
-    {
-      id: "demo-1",
-      title: "CDG → Rouen",
-      status: "Ouverte",
-      start: "2026-05-22T06:30:00",
-      end: "2026-05-22T18:45:00",
-      color: "#2563eb",
-      pickup: "Roissy CDG",
-      dropoff: "Rouen Centre",
-      driver: "Non attribué",
-      vehicle: "Autocar GT",
-      type: "Transport tourisme",
-      passengers: "48 passagers",
-      price: "250 € net",
-      comment: "Mission exemple.",
-      documents: "Permis D + FIMO",
-      demo: true,
-    },
-    {
-      id: "demo-2",
-      title: "Paris → Lille",
-      status: "Pourvue",
-      start: "2026-05-24T08:00:00",
-      end: "2026-05-24T19:00:00",
-      color: "#16a34a",
-      pickup: "Paris Bercy",
-      dropoff: "Lille Europe",
-      driver: "Yorick Martin",
-      vehicle: "Autocar",
-      type: "Ligne occasionnelle",
-      passengers: "52 passagers",
-      price: "500 € net",
-      comment: "Prévoir tenue professionnelle.",
-      documents: "Permis D + FIMO",
-      demo: true,
-    },
-  ];
+  async function inviteDriver(driver, mission) {
+  const { data: sessionData } =
+    await supabase.auth.getSession();
 
-  const allMissions = [...missions, ...createdMissions];
+  const user = sessionData.session?.user;
+
+  if (!user) return;
+
+  const { error } = await supabase
+    .from("mission_invitations")
+    .insert([
+      {
+        mission_id: mission.id,
+        company_id: user.id,
+        driver_id: driver.id,
+        driver_name:
+          driver.full_name ||
+          "Conducteur",
+      },
+    ]);
+
+  if (error) {
+    console.error(error);
+    alert("Erreur invitation");
+    return;
+  }
+
+  await loadCompanyData();
+}
+
+  async function acceptApplication(application) {
+    const { error: missionError } = await supabase
+      .from("missions")
+      .update({
+        status: "Pourvue",
+        color: "#16a34a",
+        driver_name: application.driver.name,
+        driver_id: application.driver.id,
+      })
+      .eq("id", application.missionId);
+
+    if (missionError) {
+      console.error(missionError);
+      alert("Erreur attribution mission");
+      return;
+    }
+
+    const { error: appError } = await supabase
+      .from("applications")
+      .update({
+        status: "Acceptée",
+      })
+      .eq("id", application.id);
+
+    if (appError) {
+      console.error(appError);
+      alert("Erreur mise à jour candidature");
+      return;
+    }
+
+    setCreatedMissions((prev) =>
+      prev.map((mission) =>
+        String(mission.id) === String(application.missionId)
+          ? {
+              ...mission,
+              status: "Pourvue",
+              color: "#16a34a",
+              driver: application.driver.name,
+              driverId: application.driver.id,
+            }
+          : mission
+      )
+    );
+setSelectedMission(null);
+    setApplications((prev) =>
+      prev.map((app) =>
+        String(app.id) === String(application.id)
+          ? { ...app, status: "Acceptée" }
+          : app
+      )
+    );
+
+    setSelectedMission((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: "Pourvue",
+            color: "#16a34a",
+            driver: application.driver.name,
+            driverId: application.driver.id,
+          }
+        : null
+    );
+  }
+
+  async function detachDriver(mission) {
+    const { error } = await supabase
+      .from("missions")
+      .update({
+        status: "Ouverte",
+        color: "#2563eb",
+        driver_name: "Non attribué",
+        driver_id: null,
+      })
+      .eq("id", mission.id);
+
+    if (error) {
+      console.error(error);
+      alert("Erreur lors du détachement");
+      return;
+    }
+
+    await supabase
+      .from("applications")
+      .delete()
+      .eq("mission_id", mission.id)
+      .eq("driver_id", mission.driverId)
+      .eq("status", "Acceptée");
+
+    setCreatedMissions((prev) =>
+      prev.map((item) =>
+        item.id === mission.id
+          ? {
+              ...item,
+              status: "Ouverte",
+              color: "#2563eb",
+              driver: "Non attribué",
+              driverId: null,
+            }
+          : item
+      )
+    );
+
+    setApplications((prev) =>
+      prev.filter(
+        (app) =>
+          !(
+            String(app.missionId) === String(mission.id) &&
+            String(app.driver.id) === String(mission.driverId) &&
+            app.status === "Acceptée"
+          )
+      )
+    );
+
+    setSelectedMission((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: "Ouverte",
+            color: "#2563eb",
+            driver: "Non attribué",
+            driverId: null,
+          }
+        : null
+    );
+  }
+
+  async function deleteMission(missionToDelete) {
+  if (!missionToDelete?.id) {
+    console.error("Mission sans ID", missionToDelete);
+    return;
+  }
+
+  const { error } = await supabase
+    .from("missions")
+    .delete()
+    .eq("id", missionToDelete.id);
+
+  if (error) {
+    console.error(error);
+    alert("Erreur suppression mission");
+    return;
+  }
+
+  setCreatedMissions((prev) =>
+    prev.filter(
+      (mission) =>
+        String(mission.id) !== String(missionToDelete.id)
+    )
+  );
+
+  setSelectedMission(null);
+}
+
+  async function updateMission() {
+  if (!editMission?.id) {
+    alert("Mission introuvable");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("missions")
+    .update({
+      title: editMission.title,
+      pickup: editMission.pickup,
+      dropoff: editMission.dropoff,
+      start_time: editMission.start,
+      end_time: editMission.end,
+      vehicle: editMission.vehicle,
+      passengers: editMission.passengers,
+      price: editMission.price,
+      comment: editMission.comment,
+      status: editMission.status,
+      color:
+        editMission.status === "Ouverte"
+          ? "#2563eb"
+          : editMission.status === "Pourvue"
+          ? "#16a34a"
+          : "#64748b",
+    })
+    .eq("id", editMission.id);
+
+  if (error) {
+    console.error(error);
+    alert("Erreur modification mission");
+    return;
+  }
+
+  await loadCompanyData();
+  setSelectedMission(editMission);
+  setEditMission(null);
+}
+
+  function calculateDriverMatch(mission, driver) {
+  let score = 0;
+
+  const missionDate = String(mission.start || "").slice(0, 10);
+
+  if (driver.availability_days?.includes(missionDate)) score += 30;
+
+  if (
+    driver.preferred_departments?.includes(mission.pickupDepartment) ||
+    driver.preferred_departments?.includes("France entière") ||
+    driver.preferred_departments?.includes("Europe")
+  ) {
+    score += 25;
+  }
+
+  if (
+    mission.requiredPermits?.some((permit) =>
+      driver.permits?.includes(permit)
+    )
+  ) {
+    score += 20;
+  }
+
+  if (
+    mission.requiredDocuments?.includes("FCO") &&
+    driver.fco_status === "À jour"
+  ) {
+    score += 10;
+  }
+
+  if (
+    mission.requiredDocuments?.includes("RCPRO") &&
+    driver.rcpro_status === "Oui"
+  ) {
+    score += 10;
+  }
+
+  if (driver.mission_types?.includes(mission.type)) score += 5;
+
+  return score;
+}
+
+function getRecommendedDrivers(mission) {
+  return drivers
+    .map((driver) => ({
+      ...driver,
+      matchScore: calculateDriverMatch(mission, driver),
+    }))
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, 5);
+}
+
+  const allMissions = createdMissions;
 
   return (
     <div className="dashboard">
@@ -148,19 +509,67 @@ export default function CompanyDashboard() {
             Créer mission
           </button>
 
-          <button onClick={() => navigate("/company/drivers")}>
-            Candidatures
-          </button>
+          <button
+  className="missions-menu-btn"
+  onClick={() => navigate("/company/missions")}
+>
+  <span>Missions</span>
 
-          <button>Missions</button>
-          <button>Facturation</button>
+  <div className="menu-badges">
+    <span className="assigned-badge">
+      {
+        createdMissions.filter(
+          (mission) =>
+            mission.driver &&
+            mission.driver !== "Non attribué"
+        ).length
+      }
+    </span>
+
+    <span className="waiting-badge">
+      {
+        createdMissions.filter(
+          (mission) =>
+            !mission.driver ||
+            mission.driver === "Non attribué"
+        ).length
+      }
+    </span>
+  </div>
+</button>
+          <button
+  className="billing-menu-btn"
+  onClick={() => navigate("/company/billing")}
+>
+  <span>Facturation</span>
+
+  <span className="billing-badge">
+    {
+      createdMissions.filter(
+        (mission) =>
+          mission.status === "Terminée" &&
+          mission.invoice_status !== "Payée"
+      ).length
+    }
+  </span>
+</button>
+
+          <button className="logout-btn" onClick={logout}>
+            Déconnexion
+          </button>
         </nav>
       </aside>
 
       <main className="content">
         <header className="top">
           <div>
-            <p>Bonjour TransExpress 👋</p>
+            <p>
+  Bonjour{" "}
+  {companyProfile?.companyName ||
+    companyProfile?.email ||
+    "entreprise"}{" "}
+  👋
+</p>
             <h1>Espace entreprise</h1>
           </div>
 
@@ -180,12 +589,25 @@ export default function CompanyDashboard() {
 
           <div className="card">
             <span>Conducteurs proposés</span>
-            <strong>{applications.length}</strong>
+            <strong>
+  {createdMissions.length === 0 ? 0 : drivers.length}
+</strong>
           </div>
 
           <div className="card">
             <span>Taux de réponse</span>
-            <strong>86%</strong>
+            <strong>
+  {createdMissions.length === 0
+    ? "0%"
+    : `${Math.round(
+        (createdMissions.filter(
+          (mission) =>
+            mission.status === "Pourvue"
+        ).length /
+          createdMissions.length) *
+          100
+      )}%`}
+</strong>
           </div>
         </section>
 
@@ -222,20 +644,18 @@ export default function CompanyDashboard() {
 
         <section className="mission-grid">
           {allMissions.map((mission) => (
-            <div className="mission-tile" key={mission.id}>
+            <div className="mission-tile" key={mission.id || mission.start || mission.title}>
               <span>{mission.status}</span>
 
               <h3>{mission.title}</h3>
 
-              <p>📍 {mission.pickup} → {mission.dropoff}</p>
-
               <p>
-                📅 Départ : {new Date(mission.start).toLocaleString("fr-FR")}
+                📍 {mission.pickup} → {mission.dropoff}
               </p>
 
-              <p>
-                🔁 Retour : {new Date(mission.end).toLocaleString("fr-FR")}
-              </p>
+              <p>📅 Départ : {new Date(mission.start).toLocaleString("fr-FR")}</p>
+
+              <p>🔁 Retour : {new Date(mission.end).toLocaleString("fr-FR")}</p>
 
               <p>💶 {mission.price || "Prix non renseigné"}</p>
 
@@ -329,59 +749,116 @@ export default function CompanyDashboard() {
                 </div>
               </div>
 
+<div className="applications-section">
+  <h3>Conducteurs recommandés</h3>
+
+  {getRecommendedDrivers(selectedMission).map((driver) => (
+    <div className="application-card" key={driver.id}>
+      <div>
+        <strong>{driver.full_name || "Conducteur"}</strong>
+
+        <p>{driver.city || "Ville non renseignée"}</p>
+
+        <p>
+          Match intelligent : {driver.matchScore}%
+        </p>
+      </div>
+
+      <button
+  type="button"
+  className={
+    missionInvitations.some(
+      (invitation) =>
+        String(invitation.mission_id) === String(selectedMission.id) &&
+        String(invitation.driver_id) === String(driver.id)
+    )
+      ? "accepted-btn"
+      : ""
+  }
+  disabled={missionInvitations.some(
+    (invitation) =>
+      String(invitation.mission_id) === String(selectedMission.id) &&
+      String(invitation.driver_id) === String(driver.id)
+  )}
+  onClick={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    inviteDriver(driver, selectedMission);
+  }}
+>
+  {missionInvitations.some(
+    (invitation) =>
+      String(invitation.mission_id) === String(selectedMission.id) &&
+      String(invitation.driver_id) === String(driver.id)
+  )
+    ? "Invitation envoyée"
+    : "Inviter"}
+</button>
+    </div>
+  ))}
+</div>
+
               <div className="applications-section">
                 <h3>Candidatures reçues</h3>
 
                 {applications.filter(
-                  (app) => app.missionId === selectedMission.id
+                  (app) => String(app.missionId) === String(selectedMission.id)
                 ).length === 0 && (
                   <p className="no-app">Aucune candidature pour le moment.</p>
                 )}
 
                 {applications
-  .filter(
-    (application) =>
-      String(application.missionId) === String(selectedMission.id)
-  )
-  .map((application) => (
+                  .filter(
+                    (application) =>
+                      String(application.missionId) ===
+                      String(selectedMission.id)
+                  )
+                  .map((application) => (
                     <div className="application-card" key={application.id}>
-  <div>
-    <strong>{application.driver.name}</strong>
+                      <div>
+                        <strong>{application.driver.name}</strong>
 
-    <p>{application.driver.city}</p>
+                        <p>{application.driver.city}</p>
 
-    <p>
-      {application.driver.permits} · FIMO{" "}
-      {application.driver.fimo}
-    </p>
+                        <p>
+                          {application.driver.permits} · FCO{" "}
+                          {application.driver.fimo}
+                        </p>
 
-    <p>
-      {application.driver.experience} · ShiftScore{" "}
-      {application.driver.shiftScore}
-    </p>
-  </div>
+                        <p>
+                          {application.driver.experience} · ShiftScore{" "}
+                          {application.driver.shiftScore}
+                        </p>
+                      </div>
 
-  {application.status === "Acceptée" ? (
-    <button className="accepted-btn">
-      Acceptée
-    </button>
-  ) : (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        acceptApplication(application);
-      }}
-    >
-      Accepter
-    </button>
-  )}
-</div>
+                      {application.status === "Acceptée" ? (
+                        <button className="accepted-btn">Acceptée</button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            acceptApplication(application);
+                          }}
+                        >
+                          Accepter
+                        </button>
+                      )}
+                    </div>
                   ))}
               </div>
 
               <div className="modal-actions">
+                {selectedMission.status === "Pourvue" && (
+                  <button
+                    className="detach-btn"
+                    onClick={() => detachDriver(selectedMission)}
+                  >
+                    Détacher conducteur
+                  </button>
+                )}
+
                 <button
                   className="secondary-btn"
                   onClick={() => setEditMission(selectedMission)}
@@ -389,14 +866,12 @@ export default function CompanyDashboard() {
                   Modifier
                 </button>
 
-                {!selectedMission.demo && (
-                  <button
-                    className="delete-btn"
-                    onClick={() => deleteMission(selectedMission)}
-                  >
-                    Supprimer
-                  </button>
-                )}
+                <button
+  className="delete-btn"
+  onClick={() => setMissionToDelete(selectedMission)}
+>
+  Supprimer
+</button>
               </div>
             </div>
           </div>
@@ -442,6 +917,36 @@ export default function CompanyDashboard() {
                 />
 
                 <input
+  type="datetime-local"
+  value={
+    editMission.start
+      ? editMission.start.slice(0, 16)
+      : ""
+  }
+  onChange={(e) =>
+    setEditMission({
+      ...editMission,
+      start: e.target.value,
+    })
+  }
+/>
+
+<input
+  type="datetime-local"
+  value={
+    editMission.end
+      ? editMission.end.slice(0, 16)
+      : ""
+  }
+  onChange={(e) =>
+    setEditMission({
+      ...editMission,
+      end: e.target.value,
+    })
+  }
+/>
+
+                <input
                   value={editMission.vehicle}
                   onChange={(e) =>
                     setEditMission({
@@ -461,17 +966,6 @@ export default function CompanyDashboard() {
                     })
                   }
                   placeholder="Passagers"
-                />
-
-                <input
-                  value={editMission.driver}
-                  onChange={(e) =>
-                    setEditMission({
-                      ...editMission,
-                      driver: e.target.value,
-                    })
-                  }
-                  placeholder="Conducteur"
                 />
 
                 <input
@@ -531,12 +1025,132 @@ export default function CompanyDashboard() {
             </div>
           </div>
         )}
+
+        {missionToDelete && (
+  <div className="confirm-overlay">
+    <div className="confirm-box">
+      <h3>Supprimer cette mission ?</h3>
+
+      <p>Cette action est définitive.</p>
+
+      <div className="confirm-actions">
+        <button onClick={() => setMissionToDelete(null)}>
+          Annuler
+        </button>
+
+        <button
+          className="delete-btn"
+          onClick={() => {
+            deleteMission(missionToDelete);
+            setMissionToDelete(null);
+          }}
+        >
+          Confirmer
+        </button>
+      </div>
+    </div>
+  </div>
+)}
       </main>
 
       <style>{`
         * {
           box-sizing: border-box;
         }
+
+        .confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2,6,23,0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 20px;
+}
+
+.confirm-box {
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #111827, #0f172a);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: white;
+}
+
+.billing-menu-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.billing-badge {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(249,115,22,0.18);
+  color: #fdba74;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.missions-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.menu-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.assigned-badge,
+.waiting-badge {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.assigned-badge {
+  background: rgba(22,163,74,0.18);
+  color: #86efac;
+}
+
+.waiting-badge {
+  background: rgba(249,115,22,0.18);
+  color: #fdba74;
+}
+
+.confirm-actions button {
+  flex: 1;
+  padding: 13px;
+  border-radius: 999px;
+  border: none;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+  background: rgba(255,255,255,0.08);
+}
 
         .dashboard {
           min-height: 100svh;
@@ -590,13 +1204,22 @@ export default function CompanyDashboard() {
           border: none;
         }
 
+        .logout-btn,
+        .delete-btn {
+          background: linear-gradient(180deg, #dc2626, #991b1b) !important;
+          color: white !important;
+          border: none !important;
+        }
+
+        .detach-btn {
+          background: linear-gradient(180deg, #f97316, #c2410c) !important;
+          color: white !important;
+          border: none !important;
+        }
+
         .accepted-btn {
           background: linear-gradient(180deg, #16a34a, #15803d) !important;
           cursor: default !important;
-        }
-
-        .delete-btn {
-          background: linear-gradient(180deg, #dc2626, #991b1b) !important;
         }
 
         .content {
@@ -610,6 +1233,7 @@ export default function CompanyDashboard() {
           justify-content: space-between;
           align-items: center;
           gap: 20px;
+          padding: 18px 0 26px;
         }
 
         .top p {
@@ -747,16 +1371,17 @@ export default function CompanyDashboard() {
         }
 
         .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(2,6,23,0.72);
-          backdrop-filter: blur(8px);
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          z-index: 999;
-          padding: 20px;
-        }
+  position: fixed;
+  inset: 0;
+  background: rgba(2,6,23,0.72);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  z-index: 999;
+  padding: 24px 20px;
+  overflow-y: auto;
+}
 
         .modal {
           width: 100%;
@@ -767,6 +1392,8 @@ export default function CompanyDashboard() {
           padding: 28px;
           color: white;
           box-shadow: 0 40px 120px rgba(0,0,0,0.45);
+          max-height: calc(100svh - 48px);
+overflow-y: auto;
         }
 
         .modal-top {
@@ -921,11 +1548,17 @@ export default function CompanyDashboard() {
           }
 
           nav {
-            margin-top: 16px;
+            margin-top: 18px;
+            display: flex;
             flex-direction: row;
             overflow-x: auto;
             gap: 10px;
-            padding-bottom: 6px;
+            padding-bottom: 14px;
+            scrollbar-width: none;
+          }
+
+          nav::-webkit-scrollbar {
+            display: none;
           }
 
           nav button {

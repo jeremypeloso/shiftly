@@ -1,10 +1,89 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
+import { X } from "lucide-react";
+
 export default function Register() {
+  const navigate = useNavigate();
+
+  const [form, setForm] = useState({
+    fullName: "",
+    companyName: "",
+    city: "",
+    email: "",
+    password: "",
+    role: "driver",
+  });
+
+  function updateField(field, value) {
+    setForm({
+      ...form,
+      [field]: value,
+    });
+  }
+
+  async function registerUser() {
+    const { data, error } = await supabase.auth.signUp({
+      email: form.email,
+      password: form.password,
+    });
+
+    if (error) {
+      console.error(error);
+      alert(error.message);
+      return;
+    }
+
+    const user = data.user;
+
+    if (!user) {
+      alert("Compte créé");
+      return;
+    }
+
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .insert([
+        {
+          id: user.id,
+          role: form.role,
+          full_name: form.fullName,
+          company_name:
+            form.role === "company"
+              ? form.companyName
+              : null,
+          city: form.city,
+        },
+      ]);
+
+    if (profileError) {
+      console.error(profileError);
+      alert(profileError.message);
+      return;
+    }
+
+    alert("Compte créé !");
+
+    navigate(
+      form.role === "driver"
+        ? "/driver"
+        : "/company"
+    );
+  }
+
   return (
     <main style={styles.page}>
       <div style={styles.glowOne}></div>
       <div style={styles.glowTwo}></div>
 
       <div style={styles.card}>
+        <button
+          style={styles.closeButton}
+          onClick={() => navigate("/")}
+        >
+          <X size={18} />
+        </button>
+
         <div style={styles.logo}>Shiftly</div>
 
         <div style={styles.badge}>
@@ -16,39 +95,94 @@ export default function Register() {
         </h1>
 
         <p style={styles.subtitle}>
-          Rejoignez Shiftly en tant que conducteur ou entreprise.
+          Rejoignez Shiftly en tant que conducteur
+          ou entreprise.
         </p>
 
         <input
           type="text"
           placeholder="Nom complet"
           style={styles.input}
+          value={form.fullName}
+          onChange={(e) =>
+            updateField("fullName", e.target.value)
+          }
+        />
+
+        <input
+          type="text"
+          placeholder="Ville"
+          style={styles.input}
+          value={form.city}
+          onChange={(e) =>
+            updateField("city", e.target.value)
+          }
         />
 
         <input
           type="email"
           placeholder="Adresse email"
           style={styles.input}
+          value={form.email}
+          onChange={(e) =>
+            updateField("email", e.target.value)
+          }
         />
 
         <input
           type="password"
           placeholder="Mot de passe"
           style={styles.input}
+          value={form.password}
+          onChange={(e) =>
+            updateField("password", e.target.value)
+          }
         />
 
-        <select style={styles.input}>
-          <option>Je suis conducteur</option>
-          <option>Je suis une entreprise</option>
+        <select
+          style={styles.input}
+          value={form.role}
+          onChange={(e) =>
+            updateField("role", e.target.value)
+          }
+        >
+          <option value="driver">
+            Je suis conducteur
+          </option>
+
+          <option value="company">
+            Je suis une entreprise
+          </option>
         </select>
 
-        <button style={styles.button}>
+        {form.role === "company" && (
+          <input
+            type="text"
+            placeholder="Nom de l’entreprise"
+            style={styles.input}
+            value={form.companyName}
+            onChange={(e) =>
+              updateField(
+                "companyName",
+                e.target.value
+              )
+            }
+          />
+        )}
+
+        <button
+          style={styles.button}
+          onClick={registerUser}
+        >
           Créer mon compte
         </button>
 
         <p style={styles.bottom}>
           Déjà inscrit ?{" "}
-          <span style={styles.link}>
+          <span
+            style={styles.link}
+            onClick={() => navigate("/login")}
+          >
             Se connecter
           </span>
         </p>
@@ -64,8 +198,11 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    background:
-      "linear-gradient(135deg, #0f172a 0%, #162033 52%, #1f2937 100%)",
+    background: `
+      radial-gradient(circle at top left, rgba(251,191,36,0.1), transparent 34%),
+      radial-gradient(circle at bottom right, rgba(56,189,248,0.1), transparent 34%),
+      linear-gradient(135deg, #0f172a 0%, #162033 52%, #1f2937 100%)
+    `,
     fontFamily: "Inter, Arial, sans-serif",
     padding: "24px",
     boxSizing: "border-box",
@@ -114,6 +251,24 @@ const styles = {
       "0 40px 100px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08)",
   },
 
+  closeButton: {
+    position: "absolute",
+    top: "24px",
+    right: "24px",
+    width: "38px",
+    height: "38px",
+    borderRadius: "999px",
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#cbd5e1",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    backdropFilter: "blur(10px)",
+    zIndex: 3,
+  },
+
   logo: {
     fontSize: "30px",
     fontWeight: "950",
@@ -131,7 +286,8 @@ const styles = {
     marginBottom: "18px",
     fontWeight: "700",
     fontSize: "13px",
-    boxShadow: "0 10px 25px rgba(0,0,0,0.18)",
+    boxShadow:
+      "0 10px 25px rgba(0,0,0,0.18)",
   },
 
   title: {
