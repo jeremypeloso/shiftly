@@ -6,6 +6,8 @@ import { X } from "lucide-react";
 export default function Register() {
   const navigate = useNavigate();
 
+  const [successModal, setSuccessModal] = useState(false);
+
   const [form, setForm] = useState({
     fullName: "",
     companyName: "",
@@ -37,24 +39,20 @@ export default function Register() {
     const user = data.user;
 
     if (!user) {
-      alert("Compte créé");
+      setSuccessModal(true);
       return;
     }
 
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .insert([
-        {
-          id: user.id,
-          role: form.role,
-          full_name: form.fullName,
-          company_name:
-            form.role === "company"
-              ? form.companyName
-              : null,
-          city: form.city,
-        },
-      ]);
+    const { error: profileError } = await supabase.from("profiles").insert([
+      {
+        id: user.id,
+        role: form.role,
+        full_name: form.fullName,
+        company_name: form.role === "company" ? form.companyName : null,
+        city: form.city,
+        shift_score: form.role === "driver" ? 0 : null,
+      },
+    ]);
 
     if (profileError) {
       console.error(profileError);
@@ -62,13 +60,7 @@ export default function Register() {
       return;
     }
 
-    alert("Compte créé !");
-
-    navigate(
-      form.role === "driver"
-        ? "/driver"
-        : "/company"
-    );
+    setSuccessModal(true);
   }
 
   return (
@@ -77,26 +69,18 @@ export default function Register() {
       <div style={styles.glowTwo}></div>
 
       <div style={styles.card}>
-        <button
-          style={styles.closeButton}
-          onClick={() => navigate("/")}
-        >
+        <button style={styles.closeButton} onClick={() => navigate("/")}>
           <X size={18} />
         </button>
 
         <div style={styles.logo}>Shiftly</div>
 
-        <div style={styles.badge}>
-          🚍 Rejoindre la plateforme
-        </div>
+        <div style={styles.badge}>🚍 Rejoindre la plateforme</div>
 
-        <h1 style={styles.title}>
-          Créer un compte
-        </h1>
+        <h1 style={styles.title}>Créer un compte</h1>
 
         <p style={styles.subtitle}>
-          Rejoignez Shiftly en tant que conducteur
-          ou entreprise.
+          Rejoignez Shiftly en tant que conducteur ou entreprise.
         </p>
 
         <input
@@ -104,9 +88,7 @@ export default function Register() {
           placeholder="Nom complet"
           style={styles.input}
           value={form.fullName}
-          onChange={(e) =>
-            updateField("fullName", e.target.value)
-          }
+          onChange={(e) => updateField("fullName", e.target.value)}
         />
 
         <input
@@ -114,9 +96,7 @@ export default function Register() {
           placeholder="Ville"
           style={styles.input}
           value={form.city}
-          onChange={(e) =>
-            updateField("city", e.target.value)
-          }
+          onChange={(e) => updateField("city", e.target.value)}
         />
 
         <input
@@ -124,9 +104,7 @@ export default function Register() {
           placeholder="Adresse email"
           style={styles.input}
           value={form.email}
-          onChange={(e) =>
-            updateField("email", e.target.value)
-          }
+          onChange={(e) => updateField("email", e.target.value)}
         />
 
         <input
@@ -134,25 +112,16 @@ export default function Register() {
           placeholder="Mot de passe"
           style={styles.input}
           value={form.password}
-          onChange={(e) =>
-            updateField("password", e.target.value)
-          }
+          onChange={(e) => updateField("password", e.target.value)}
         />
 
         <select
           style={styles.input}
           value={form.role}
-          onChange={(e) =>
-            updateField("role", e.target.value)
-          }
+          onChange={(e) => updateField("role", e.target.value)}
         >
-          <option value="driver">
-            Je suis conducteur
-          </option>
-
-          <option value="company">
-            Je suis une entreprise
-          </option>
+          <option value="driver">Je suis conducteur</option>
+          <option value="company">Je suis une entreprise</option>
         </select>
 
         {form.role === "company" && (
@@ -161,32 +130,39 @@ export default function Register() {
             placeholder="Nom de l’entreprise"
             style={styles.input}
             value={form.companyName}
-            onChange={(e) =>
-              updateField(
-                "companyName",
-                e.target.value
-              )
-            }
+            onChange={(e) => updateField("companyName", e.target.value)}
           />
         )}
 
-        <button
-          style={styles.button}
-          onClick={registerUser}
-        >
+        <button style={styles.button} onClick={registerUser}>
           Créer mon compte
         </button>
 
         <p style={styles.bottom}>
           Déjà inscrit ?{" "}
-          <span
-            style={styles.link}
-            onClick={() => navigate("/login")}
-          >
+          <span style={styles.link} onClick={() => navigate("/login")}>
             Se connecter
           </span>
         </p>
       </div>
+
+      {successModal && (
+        <div style={styles.modalOverlay} onClick={() => setSuccessModal(false)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.successIcon}>✅</div>
+
+            <h2 style={styles.modalTitle}>Compte créé</h2>
+
+            <p style={styles.modalText}>
+              Bienvenue sur Shiftly. Votre compte est prêt.
+            </p>
+
+            <button style={styles.confirmBtn} onClick={() => navigate("/login")}>
+              Continuer
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -286,8 +262,7 @@ const styles = {
     marginBottom: "18px",
     fontWeight: "700",
     fontSize: "13px",
-    boxShadow:
-      "0 10px 25px rgba(0,0,0,0.18)",
+    boxShadow: "0 10px 25px rgba(0,0,0,0.18)",
   },
 
   title: {
@@ -325,14 +300,12 @@ const styles = {
     padding: "16px",
     borderRadius: "999px",
     border: "none",
-    background:
-      "linear-gradient(180deg, #2563eb, #1d4ed8)",
+    background: "linear-gradient(180deg, #2563eb, #1d4ed8)",
     color: "white",
     fontWeight: "900",
     fontSize: "16px",
     cursor: "pointer",
-    boxShadow:
-      "0 18px 45px rgba(37,99,235,0.28)",
+    boxShadow: "0 18px 45px rgba(37,99,235,0.28)",
   },
 
   bottom: {
@@ -345,6 +318,65 @@ const styles = {
   link: {
     color: "#dbeafe",
     fontWeight: "700",
+    cursor: "pointer",
+  },
+
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(2,6,23,0.75)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 999,
+    padding: "20px",
+  },
+
+  modal: {
+    width: "100%",
+    maxWidth: "420px",
+    padding: "28px",
+    borderRadius: "28px",
+    background: "linear-gradient(180deg, #111827, #0f172a)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    color: "white",
+    textAlign: "center",
+    boxShadow: "0 40px 120px rgba(0,0,0,0.45)",
+  },
+
+  successIcon: {
+    width: "72px",
+    height: "72px",
+    margin: "0 auto 18px",
+    borderRadius: "999px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "34px",
+    background: "rgba(22,163,74,0.18)",
+  },
+
+  modalTitle: {
+    margin: 0,
+    fontSize: "30px",
+    fontWeight: "950",
+  },
+
+  modalText: {
+    color: "#cbd5e1",
+    lineHeight: 1.5,
+    marginTop: "12px",
+  },
+
+  confirmBtn: {
+    width: "100%",
+    marginTop: "24px",
+    padding: "14px",
+    border: "none",
+    borderRadius: "999px",
+    background: "linear-gradient(180deg, #16a34a, #15803d)",
+    color: "white",
+    fontWeight: "900",
     cursor: "pointer",
   },
 };

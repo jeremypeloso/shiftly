@@ -19,6 +19,7 @@ export default function CompanyDashboard() {
   const [missionInvitations, setMissionInvitations] = useState([]);
   const actionLockRef = useRef(false);
   const [missionToDelete, setMissionToDelete] = useState(null);
+const [notifications, setNotifications] = useState([]);
 
 
   useEffect(() => {
@@ -109,6 +110,13 @@ if (invitationsError) {
 }
 
 setMissionInvitations(invitationsData || []);
+
+const { data: notificationsData } = await supabase
+  .from("notifications")
+  .select("*")
+  .eq("user_id", user.id);
+
+setNotifications(notificationsData || []);
 
     const formattedMissions = missionsData.map((mission) => ({
   id: mission.id,
@@ -240,6 +248,15 @@ requiredDocuments: mission.required_documents || [],
           "Conducteur",
       },
     ]);
+
+    await supabase.from("notifications").insert([
+  {
+    user_id: driver.id,
+    title: "Nouvelle mission proposée",
+    message: `${companyProfile?.companyName || "Une entreprise"} vous propose une mission : ${mission.title}`,
+    type: "mission_invitation",
+  },
+]);
 
   if (error) {
     console.error(error);
@@ -537,6 +554,18 @@ function getRecommendedDrivers(mission) {
     </span>
   </div>
 </button>
+
+<button
+  className="notif-btn"
+  onClick={() => navigate("/notifications")}
+>
+  <span>🔔 Notifications</span>
+
+  <span className="notif-badge">
+    {notifications.filter((n) => !n.is_read).length}
+  </span>
+</button>
+
           <button
   className="billing-menu-btn"
   onClick={() => navigate("/company/billing")}
@@ -1210,6 +1239,27 @@ function getRecommendedDrivers(mission) {
           color: white !important;
           border: none !important;
         }
+
+        .notif-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.notif-badge {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(239,68,68,0.18);
+  color: #fca5a5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+}
 
         .detach-btn {
           background: linear-gradient(180deg, #f97316, #c2410c) !important;

@@ -13,6 +13,7 @@ import DriverAvailability from "./pages/DriverAvailability";
 import DriverMissions from "./pages/DriverMissions";
 import CompanyMissions from "./pages/CompanyMissions";
 import CompanyBilling from "./pages/CompanyBilling";
+import Notifications from "./pages/Notifications";
 
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -110,6 +111,15 @@ export default function App() {
   element={
     <ProtectedRoute>
       <CompanyBilling />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/notifications"
+  element={
+    <ProtectedRoute>
+      <Notifications />
     </ProtectedRoute>
   }
 />
