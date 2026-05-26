@@ -432,6 +432,26 @@ export default function Home() {
     font-size: 15px;
   }
 
+  @media (min-width: 901px) {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .home-page {
+    height: 100svh;
+    overflow: hidden;
+  }
+
+  .hero {
+    height: 100svh;
+    min-height: 100svh;
+    overflow: hidden;
+  }
+}
+
   @media (max-width: 900px) {
     html,
     body,
