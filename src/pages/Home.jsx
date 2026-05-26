@@ -151,27 +151,21 @@ export default function Home() {
           overflow-x: hidden;
         }
 
-        body {
-          overflow: hidden;
-height: 100svh;
-        }
-
         html,
 body,
 #root {
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
         .home-page {
-          width: 100%;
-          min-height: 100svh;
-          overflow-x: hidden;
-          position: relative;
-          color: white;
-          font-family: Inter, Arial, sans-serif;
-          height: 100svh;
-overflow: hidden;
+  width: 100%;
+  min-height: 100svh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  position: relative;
+}
 
           background:
             radial-gradient(circle at top left,
@@ -546,7 +540,7 @@ overflow: hidden;
             rgba(37,99,235,0.24);
         }
 
-        @media (max-width: 900px) {
+        
 
           .hero {
             grid-template-columns: 1fr;
@@ -576,7 +570,7 @@ overflow: hidden;
             font-size:
               clamp(38px, 12vw, 50px);
 
-            line-height: 0.96;
+            line-height: 0.96;@media (max-width: 900px) {
           }
 
           .subtitle {
@@ -649,51 +643,57 @@ overflow: hidden;
           .driver h3 {
             font-size: 18px;
           }
-        }
 
-        @media (max-width: 380px) {
+          @media (max-width: 900px) {
+  html,
+  body,
+  #root {
+    height: auto !important;
+    min-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
 
-          .stats {
-            grid-template-columns: 1fr;
-          }
+  .home-page {
+    height: auto !important;
+    min-height: 100svh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    position: relative !important;
+  }
 
-          .card-top,
-          .driver {
-            align-items: flex-start;
-            flex-direction: column;
-          }
-        }
+  .hero {
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: auto !important;
+    height: auto !important;
+    padding: 22px 16px 48px !important;
+    gap: 24px !important;
+    overflow: visible !important;
+  }
 
-        @media (max-width: 900px) {
   .blob {
     display: none;
   }
 
-  .badge,
-  .stats div,
-  .mission-card,
+  .actions {
+    flex-direction: column;
+  }
+
+  .primary,
   .secondary {
-    backdrop-filter: none;
+    width: 100%;
+  }
+
+  .stats {
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .mission-card {
-    box-shadow: 0 24px 60px rgba(0,0,0,0.28);
+    max-width: 100%;
   }
-
-  .stats div,
-  .route,
-  .info,
-  .driver {
-    box-shadow: 0 8px 20px rgba(0,0,0,0.16);
-  }
-
-  button:hover {
-    transform: none;
-  }
-
-  .home-page {
-    -webkit-overflow-scrolling: touch;
-  }
+}
+}
 }
 
       `}</style>
