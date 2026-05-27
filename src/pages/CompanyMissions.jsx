@@ -74,7 +74,10 @@ export default function CompanyMissions() {
           : "En attente d’attribution"}
       </span>
 
-      <h2>{mission.title}</h2>
+      <h2>
+  {mission.title ||
+    `${mission.pickup} → ${mission.dropoff}`}
+</h2>
 
       <p>
         📍 {mission.pickup} → {mission.dropoff}
@@ -169,6 +172,14 @@ export default function CompanyMissions() {
             radial-gradient(circle at bottom right, rgba(56,189,248,0.08), transparent 34%),
             linear-gradient(135deg, #0f172a 0%, #162033 52%, #1f2937 100%);
         }
+
+        .card h2 {
+  display: block;
+  color: white;
+  font-size: 22px;
+  line-height: 1.2;
+  word-break: break-word;
+}
 
         .top {
           display: flex;

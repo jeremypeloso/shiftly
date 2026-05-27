@@ -672,27 +672,6 @@ function getRecommendedDrivers(mission) {
 >
   <span>Missions</span>
 
-  <div className="menu-badges">
-    <span className="assigned-badge">
-      {
-        createdMissions.filter(
-          (mission) =>
-            mission.driver &&
-            mission.driver !== "Non attribué"
-        ).length
-      }
-    </span>
-
-    <span className="waiting-badge">
-      {
-        createdMissions.filter(
-          (mission) =>
-            !mission.driver ||
-            mission.driver === "Non attribué"
-        ).length
-      }
-    </span>
-  </div>
 </button>
 
           <button className="logout-btn" onClick={logout}>
@@ -1255,34 +1234,6 @@ function getRecommendedDrivers(mission) {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-
-.menu-badges {
-  display: flex;
-  gap: 8px;
-}
-
-.assigned-badge,
-.waiting-badge {
-  min-width: 26px;
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.assigned-badge {
-  background: rgba(22,163,74,0.18);
-  color: #86efac;
-}
-
-.waiting-badge {
-  background: rgba(249,115,22,0.18);
-  color: #fdba74;
 }
 
 .confirm-actions button {

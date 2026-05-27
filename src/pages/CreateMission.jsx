@@ -178,109 +178,80 @@ export default function CreateMission() {
   </div>
 
   <div className="field">
-    <label>Adresse départ</label>
+  <label>
+    Début mission
+  </label>
 
-    <input
-      placeholder="Ex : Paris"
-      value={form.pickup}
-      onChange={(e) =>
-        updateField("pickup", e.target.value)
-      }
-      required
-    />
-  </div>
+  <input
+    className="same-input"
+    type="date"
+    value={form.startDate}
+    onChange={(e) =>
+      updateField(
+        "startDate",
+        e.target.value
+      )
+    }
+    required
+  />
+</div>
 
-  <div className="field">
-    <label>Adresse arrivée</label>
+<div className="field">
+  <label>
+    Heure départ
+  </label>
 
-    <input
-      placeholder="Ex : Lyon"
-      value={form.dropoff}
-      onChange={(e) =>
-        updateField("dropoff", e.target.value)
-      }
-      required
-    />
-  </div>
+  <input
+    className="same-input"
+    type="time"
+    value={form.startTime}
+    onChange={(e) =>
+      updateField(
+        "startTime",
+        e.target.value
+      )
+    }
+    required
+  />
+</div>
 
-            <div className="field">
-              <label>
-                Département départ
-              </label>
+<div className="field">
+  <label>
+    Fin mission
+  </label>
 
-              <input
-                placeholder="Ex : 78 - Yvelines"
-                value={
-                  form.pickupDepartment
-                }
-                onChange={(e) =>
-                  updateField(
-                    "pickupDepartment",
-                    e.target.value
-                  )
-                }
-              />
-            </div>
+  <input
+    className="same-input"
+    type="date"
+    value={form.endDate}
+    onChange={(e) =>
+      updateField(
+        "endDate",
+        e.target.value
+      )
+    }
+    required
+  />
+</div>
 
-            <div className="field">
-              <label>
-                Type mission
-              </label>
+<div className="field">
+  <label>
+    Heure retour
+  </label>
 
-              <select
-                value={
-                  form.missionType
-                }
-                onChange={(e) =>
-                  updateField(
-                    "missionType",
-                    e.target.value
-                  )
-                }
-              >
-                <option value="">
-                  Sélectionner
-                </option>
-
-                <option>
-                  Scolaire
-                </option>
-
-                <option>
-                  Tourisme
-                </option>
-
-                <option>
-                  Ligne régulière
-                </option>
-
-                <option>
-                  VIP
-                </option>
-
-                <option>
-                  Événementiel
-                </option>
-              </select>
-            </div>
-
-            <div className="field">
-              <label>
-                Début mission
-              </label>
-
-              <input
-                type="date"
-                value={form.startDate}
-                onChange={(e) =>
-                  updateField(
-                    "startDate",
-                    e.target.value
-                  )
-                }
-                required
-              />
-            </div>
+  <input
+    className="same-input"
+    type="time"
+    value={form.endTime}
+    onChange={(e) =>
+      updateField(
+        "endTime",
+        e.target.value
+      )
+    }
+    required
+  />
+</div>
 
             <div className="field">
               <label>
@@ -547,27 +518,48 @@ export default function CreateMission() {
         }
 
         input,
-        select,
-        textarea {
-          width: 100%;
-          padding: 14px;
-          border-radius: 16px;
+select,
+textarea {
+  width: 100%;
+  height: 52px;
+  box-sizing: border-box;
 
-          border:
-            1px solid rgba(255,255,255,.08);
+  padding: 14px;
 
-          background:
-            rgba(15,23,42,.9);
+  border-radius: 16px;
 
-          color: white;
-          font-size: 15px;
-          outline: none;
-        }
+  border:
+    1px solid rgba(255,255,255,.08);
 
-        textarea {
-          min-height: 120px;
-          resize: vertical;
-        }
+  background:
+    rgba(15,23,42,.9);
+
+  color: white;
+  font-size: 15px;
+  outline: none;
+}
+
+input[type="date"],
+input[type="time"],
+input[type="number"] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 52px;
+  min-height: 52px;
+  line-height: 52px;
+}
+
+.same-input {
+  height: 54px !important;
+  min-height: 54px !important;
+  padding: 14px !important;
+  box-sizing: border-box !important;
+}
+
+textarea {
+  min-height: 120px;
+  height: auto;
+}
 
         .documents {
           display: flex;
@@ -639,6 +631,12 @@ export default function CreateMission() {
           .page {
             padding: 16px 12px 40px;
           }
+
+          input,
+select {
+  height: 52px;
+  min-height: 52px;
+}
 
           .card {
             padding: 22px;
