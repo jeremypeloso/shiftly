@@ -48,6 +48,16 @@ export default function DriverProfile() {
     missionTypes: [],
     availability: "",
     shiftScore: 92,
+
+    driverSiret: "",
+    driverCompanyVerified: false,
+    driverLegalName: "",
+    driverCompanyAddress: "",
+    driverApe: "",
+
+    licenseExpiry: "",
+    fcoExpiry: "",
+    rcproExpiry: "",
   });
 
   useEffect(() => {
@@ -60,7 +70,6 @@ export default function DriverProfile() {
         const user = await getCurrentUser();
 
         if (!user) {
-          console.warn("Session temporairement absente");
           if (mounted) setLoading(false);
           return;
         }
@@ -91,10 +100,18 @@ export default function DriverProfile() {
             missionTypes: data.mission_types || [],
             availability: data.availability || "",
             shiftScore: data.shift_score || 92,
+
+            driverSiret: data.driver_siret || "",
+            driverCompanyVerified: data.driver_company_verified || false,
+            driverLegalName: data.driver_legal_name || "",
+            driverCompanyAddress: data.driver_company_address || "",
+            driverApe: data.driver_ape || "",
+
+            licenseExpiry: data.driver_license_expiry || "",
+            fcoExpiry: data.driver_fco_expiry || "",
+            rcproExpiry: data.driver_rcpro_expiry || "",
           }));
         }
-      } catch (err) {
-        console.error(err);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -127,6 +144,53 @@ export default function DriverProfile() {
     });
   }
 
+  async function verifyDriverSiret() {
+    if (!form.driverSiret) {
+      alert("Entre un SIRET");
+      return;
+    }
+
+    const { data, error } = await supabase.functions.invoke("verify-siret", {
+      body: {
+        siret: form.driverSiret.replace(/\D/g, ""),
+      },
+    });
+
+    if (error) {
+      console.error(error);
+      alert("Erreur vérification SIRET");
+      return;
+    }
+
+    if (data?.header?.statut !== 200) {
+      alert("SIRET introuvable");
+      return;
+    }
+
+    const etab = data.etablissement;
+    const legal = etab.uniteLegale;
+    const adresse = etab.adresseEtablissement;
+
+    const fullAddress = [
+      adresse.numeroVoieEtablissement,
+      adresse.typeVoieEtablissement,
+      adresse.libelleVoieEtablissement,
+      adresse.codePostalEtablissement,
+      adresse.libelleCommuneEtablissement,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    setForm((prev) => ({
+      ...prev,
+      driverSiret: etab.siret,
+      driverCompanyVerified: true,
+      driverLegalName: legal.denominationUniteLegale || "",
+      driverCompanyAddress: fullAddress,
+      driverApe: legal.activitePrincipaleUniteLegale || "",
+    }));
+  }
+
   async function saveProfile() {
     const user = await getCurrentUser();
 
@@ -149,6 +213,15 @@ export default function DriverProfile() {
         mission_types: form.missionTypes,
         availability: form.availability,
         shift_score: form.shiftScore,
+
+        driver_siret: form.driverSiret,
+        driver_company_verified: form.driverCompanyVerified,
+        driver_legal_name: form.driverLegalName,
+        driver_company_address: form.driverCompanyAddress,
+        driver_ape: form.driverApe,
+        driver_license_expiry: form.licenseExpiry || null,
+        driver_fco_expiry: form.fcoExpiry || null,
+        driver_rcpro_expiry: form.rcproExpiry || null,
       })
       .eq("id", user.id);
 
@@ -170,32 +243,6 @@ export default function DriverProfile() {
         <div className="card">
           <h2>Chargement du profil...</h2>
         </div>
-
-        <style>{`
-          .page {
-            min-height: 100svh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 24px;
-            color: white;
-            font-family: Inter, Arial, sans-serif;
-            background:
-              radial-gradient(circle at top left, rgba(251,191,36,0.1), transparent 34%),
-              radial-gradient(circle at bottom right, rgba(56,189,248,0.1), transparent 34%),
-              linear-gradient(135deg, #0f172a 0%, #162033 52%, #1f2937 100%);
-          }
-
-          .card {
-            width: 100%;
-            max-width: 860px;
-            padding: 32px;
-            border-radius: 28px;
-            background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 30px 80px rgba(0,0,0,0.28);
-          }
-        `}</style>
       </main>
     );
   }
@@ -219,6 +266,71 @@ export default function DriverProfile() {
         <div className="score">⭐ ShiftScore {form.shiftScore}</div>
 
         {successMessage && <div className="success">{successMessage}</div>}
+
+        <div className="verification-box full">
+          <h2>Vérification conducteur indépendant</h2>
+
+          <p>
+            Vérifiez votre SIRET et renseignez les dates de validité de vos
+            documents professionnels.
+          </p>
+
+          <div className="grid">
+            <input
+              placeholder="SIRET conducteur"
+              value={form.driverSiret}
+              onChange={(e) => updateField("driverSiret", e.target.value)}
+            />
+
+            <button
+              type="button"
+              className="verify"
+              onClick={verifyDriverSiret}
+            >
+              Vérifier le SIRET
+            </button>
+
+            {form.driverCompanyVerified && (
+              <div className="verified-driver full">
+                <div className="verified-icon">✓</div>
+
+                <div>
+                  <strong>Conducteur déclaré</strong>
+                  <p>{form.driverLegalName}</p>
+                  <p>{form.driverCompanyAddress}</p>
+                  <p>APE : {form.driverApe}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="field">
+              <label>Validité permis</label>
+              <input
+                type="date"
+                value={form.licenseExpiry}
+                onChange={(e) => updateField("licenseExpiry", e.target.value)}
+              />
+            </div>
+
+            <div className="field">
+              <label>Validité FCO</label>
+              <input
+                type="date"
+                value={form.fcoExpiry}
+                onChange={(e) => updateField("fcoExpiry", e.target.value)}
+              />
+            </div>
+
+            <div className="field">
+              <label>Validité RC Pro</label>
+              <input
+                type="date"
+                value={form.rcproExpiry}
+                onChange={(e) => updateField("rcproExpiry", e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
 
         <div className="grid">
           <input
@@ -457,6 +569,71 @@ export default function DriverProfile() {
 
         .full {
           grid-column: 1 / -1;
+        }
+
+        .verification-box {
+          margin: 24px 0;
+          padding: 20px;
+          border-radius: 24px;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .verification-box h2 {
+          margin: 0 0 8px;
+        }
+
+        .verification-box p {
+          color: #cbd5e1;
+          margin: 0 0 18px;
+        }
+
+        .verify {
+          border: none;
+          border-radius: 999px;
+          background: linear-gradient(180deg, #2563eb, #1d4ed8);
+          color: white;
+          font-weight: 900;
+          cursor: pointer;
+          padding: 14px;
+        }
+
+        .verified-driver {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding: 18px;
+          border-radius: 22px;
+          background: linear-gradient(
+            180deg,
+            rgba(22,163,74,.18),
+            rgba(22,163,74,.08)
+          );
+          border: 1px solid rgba(34,197,94,.22);
+        }
+
+        .verified-icon {
+          width: 54px;
+          height: 54px;
+          border-radius: 999px;
+          background: rgba(34,197,94,.2);
+          color: #86efac;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 26px;
+          font-weight: 900;
+          flex-shrink: 0;
+        }
+
+        .verified-driver strong {
+          color: white;
+        }
+
+        .verified-driver p {
+          margin: 4px 0 0;
+          color: #bbf7d0;
+          font-size: 13px;
         }
 
         .chips {
