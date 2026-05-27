@@ -1754,9 +1754,14 @@ overflow-y: auto;
           }
 
           .top {
-            flex-direction: column;
-            align-items: stretch;
-          }
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+}
+
+.driver-top-right {
+  margin-top: 6px;
+}
 
           .top h1 {
             font-size: 32px;
