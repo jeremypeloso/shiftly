@@ -659,6 +659,36 @@ function getRecommendedDrivers(mission) {
       <aside className="sidebar">
         <h2>Shiftly</h2>
 
+        <div className="mobile-actions">
+
+  <button
+    className="notif-pill"
+    onClick={() => navigate("/notifications")}
+  >
+    <div className="notif-left">
+      <span className="notif-icon">🔔</span>
+    </div>
+
+    {notifications.filter((n) => !n.is_read).length > 0 && (
+      <div className="notif-count">
+        {
+          notifications.filter(
+            (n) => !n.is_read
+          ).length
+        }
+      </div>
+    )}
+  </button>
+
+  <button
+    className="mobile-logout"
+    onClick={logout}
+  >
+    ⇦
+  </button>
+
+</div>
+
         <nav>
           <button className="active">Dashboard</button>
 
@@ -678,12 +708,6 @@ function getRecommendedDrivers(mission) {
             Déconnexion
           </button>
 
-          <button
-  className="mobile-logout"
-  onClick={logout}
->
-  ⎋
-</button>
         </nav>
       </aside>
 
@@ -1220,12 +1244,37 @@ function getRecommendedDrivers(mission) {
   padding: 20px;
 }
 
+.mobile-actions {
+  display: none;
+}
+
 .sidebar {
   position: relative;
 }
 
 .mobile-logout {
   display: none;
+
+  width: 42px;
+  height: 42px;
+
+  border-radius: 999px;
+
+  border:
+    1px solid rgba(248,113,113,0.25);
+
+  background:
+    rgba(127,29,29,0.25);
+
+  color: #f87171;
+
+  align-items: center;
+  justify-content: center;
+
+  font-size: 20px;
+  font-weight: 900;
+
+  cursor: pointer;
 }
 
 .confirm-box {
@@ -1845,7 +1894,7 @@ overflow-y: auto;
             grid-template-columns: 1fr;
           }
 
-          .mobile-logout {
+.mobile-actions {
   display: flex;
 
   position: absolute;
@@ -1853,24 +1902,17 @@ overflow-y: auto;
   top: 14px;
   right: 14px;
 
-  width: 42px;
-  height: 42px;
-
-  border-radius: 999px;
-  border: none;
-
-  background:
-    rgba(255,255,255,0.08);
-
-  color: white;
+  gap: 10px;
 
   align-items: center;
-  justify-content: center;
+}
 
-  font-size: 20px;
-  font-weight: 900;
+.mobile-actions .notif-pill {
+  padding: 8px 10px;
+}
 
-  cursor: pointer;
+.driver-top-right .notif-pill {
+  display: none;
 }
 
 .logout-btn {
