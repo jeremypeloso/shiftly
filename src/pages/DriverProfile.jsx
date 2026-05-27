@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { getCurrentUser } from "../lib/auth";
 
 export default function DriverProfile() {
   const navigate = useNavigate();
@@ -67,7 +66,9 @@ export default function DriverProfile() {
       try {
         setLoading(true);
 
-        const user = await getCurrentUser();
+        const {
+  data: { user },
+} = await supabase.auth.getUser();
 
         if (!user) {
           if (mounted) setLoading(false);
