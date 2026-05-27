@@ -677,6 +677,13 @@ function getRecommendedDrivers(mission) {
           <button className="logout-btn" onClick={logout}>
             Déconnexion
           </button>
+
+          <button
+  className="mobile-logout"
+  onClick={logout}
+>
+  ⎋
+</button>
         </nav>
       </aside>
 
@@ -1211,6 +1218,14 @@ function getRecommendedDrivers(mission) {
   justify-content: center;
   z-index: 1200;
   padding: 20px;
+}
+
+.sidebar {
+  position: relative;
+}
+
+.mobile-logout {
+  display: none;
 }
 
 .confirm-box {
@@ -1820,6 +1835,38 @@ overflow-y: auto;
           .edit-grid {
             grid-template-columns: 1fr;
           }
+
+          .mobile-logout {
+  display: flex;
+
+  position: absolute;
+
+  top: 14px;
+  right: 14px;
+
+  width: 42px;
+  height: 42px;
+
+  border-radius: 999px;
+  border: none;
+
+  background:
+    rgba(255,255,255,0.08);
+
+  color: white;
+
+  align-items: center;
+  justify-content: center;
+
+  font-size: 20px;
+  font-weight: 900;
+
+  cursor: pointer;
+}
+
+.logout-btn {
+  display: none;
+}
 
           .modal-actions,
           .application-card {
