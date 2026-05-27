@@ -11,6 +11,9 @@ export default function DriverMissions() {
   const [loading, setLoading] = useState(true);
   const [selectedMission, setSelectedMission] = useState(null);
   const [pageLocked, setPageLocked] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportMissionTarget, setReportMissionTarget] = useState(null);
+const [popup, setPopup] = useState(null);
 
   useEffect(() => {
     loadMissions();
@@ -77,7 +80,17 @@ export default function DriverMissions() {
     })),
   ];
 
-  setMissions(merged);
+  const uniqueMissions = merged.filter(
+  (item, index, array) =>
+    item.mission?.id &&
+    index ===
+      array.findIndex(
+        (other) =>
+          other.mission?.id === item.mission?.id
+      )
+);
+
+setMissions(uniqueMissions);
   setLoading(false);
 }
 
@@ -142,12 +155,96 @@ async function completeMission(mission) {
     return;
   }
 
-  alert("Mission terminée ✅");
+  setPopup({
+  type: "success",
+  title: "Mission terminée",
+  message:
+    "La mission a bien été marquée comme terminée.",
+});
 
   setSelectedMission(null);
 
   await loadMissions();
 }
+
+async function reportMission(mission) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    alert("Utilisateur introuvable");
+    return;
+  }
+
+  if (!mission?.id) {
+    alert("Mission introuvable");
+    return;
+  }
+
+  if (!reportReason.trim()) {
+    alert("Expliquez le problème avant d’envoyer.");
+    return;
+  }
+
+  const { data: ticket, error: ticketError } = await supabase
+    .from("support_tickets")
+    .insert([
+      {
+        mission_id: mission.id,
+        user_id: user.id,
+        status: "open",
+        subject: mission.title || "Signalement mission",
+      },
+    ])
+    .select()
+    .single();
+
+  if (ticketError) {
+    console.error(ticketError);
+    alert("Erreur création ticket");
+    return;
+  }
+
+  const { error: messageError } = await supabase
+    .from("support_messages")
+    .insert([
+      {
+        ticket_id: ticket.id,
+        sender_id: user.id,
+        sender_role: "driver",
+        message: reportReason,
+      },
+    ]);
+
+  if (messageError) {
+    console.error(messageError);
+    alert("Erreur envoi message");
+    return;
+  }
+
+  await supabase
+    .from("missions")
+    .update({
+      is_reported: true,
+      report_reason: reportReason,
+      reported_by: user.id,
+      reported_at: new Date().toISOString(),
+    })
+    .eq("id", mission.id);
+
+  setPopup({
+    type: "success",
+    title: "Signalement envoyé",
+    message:
+      "Votre demande a été transmise à l’administration Shiftly.",
+  });
+
+  setReportReason("");
+  setReportMissionTarget(null);
+  setSelectedMission(null);
+
+  await loadMissions();
+}
+
   return (
     <div className="page">
       <div className="top">
@@ -334,14 +431,99 @@ async function completeMission(mission) {
       <p>📝 Commentaire : {selectedMission.mission?.comment || "Aucun commentaire"}</p>
       <p>📌 Statut : {selectedMission.status}</p>
 
-      <button
-  className="message-btn"
-  onClick={() => {
-    alert("Messagerie bientôt disponible");
-  }}
+<div className="modal-actions">
+
+  <button
+  className="report-btn"
+  onClick={() =>
+    setReportMissionTarget(selectedMission.mission)
+  }
 >
-  Contacter l’entreprise
+  Signaler un problème
 </button>
+
+  <button
+    className="message-btn"
+    onClick={() => {
+      alert(
+        "Messagerie bientôt disponible"
+      );
+    }}
+  >
+    Contacter l’entreprise
+  </button>
+
+</div>
+    </div>
+  </div>
+)}
+
+{reportMissionTarget && (
+  <div className="modal-overlay">
+    <div className="modal report-modal">
+      <button
+        className="close"
+        onClick={() => {
+          setReportMissionTarget(null);
+          setReportReason("");
+        }}
+      >
+        ✕
+      </button>
+
+      <h2>Signaler un problème</h2>
+
+      <p className="report-help">
+        Expliquez brièvement le problème rencontré sur cette mission.
+      </p>
+
+      <textarea
+        className="report-textarea"
+        placeholder="Exemple : horaires incorrects, mission non conforme, problème avec l’entreprise..."
+        value={reportReason}
+        onChange={(e) => setReportReason(e.target.value)}
+      />
+
+      <div className="modal-actions">
+        <button
+          className="report-btn"
+          onClick={() => reportMission(reportMissionTarget)}
+        >
+          Envoyer le signalement
+        </button>
+
+        <button
+          className="message-btn"
+          onClick={() => {
+            setReportMissionTarget(null);
+            setReportReason("");
+          }}
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{popup && (
+  <div className="modal-overlay">
+    <div className="popup">
+
+      <div className="popup-icon success">
+        ✅
+      </div>
+
+      <h3>{popup.title}</h3>
+
+      <p>{popup.message}</p>
+
+      <button
+        onClick={() => setPopup(null)}
+      >
+        Fermer
+      </button>
+
     </div>
   </div>
 )}
@@ -361,12 +543,210 @@ async function completeMission(mission) {
           font-family: Inter, Arial;
         }
 
+        .popup {
+  width: 100%;
+  max-width: 420px;
+
+  padding: 32px;
+
+  border-radius: 30px;
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255,255,255,0.14),
+      rgba(255,255,255,0.06)
+    );
+
+  border:
+    1px solid rgba(255,255,255,0.12);
+
+  text-align: center;
+
+  box-shadow:
+    0 40px 120px rgba(0,0,0,0.45);
+
+  backdrop-filter: blur(30px);
+}
+
+.popup-icon {
+  width: 82px;
+  height: 82px;
+
+  border-radius: 999px;
+
+  margin: 0 auto 18px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 38px;
+}
+
+.popup-icon.success {
+  background:
+    rgba(22,163,74,0.18);
+}
+
+.popup h3 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 950;
+}
+
+.popup p {
+  margin-top: 14px;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.popup button {
+  width: 100%;
+
+  margin-top: 24px;
+
+  padding: 15px;
+
+  border: none;
+
+  border-radius: 999px;
+
+  background:
+    linear-gradient(
+      180deg,
+      #16a34a,
+      #15803d
+    );
+
+  color: white;
+
+  font-weight: 900;
+
+  cursor: pointer;
+}
+
         .top {
           display: flex;
           justify-content: space-between;
           align-items: center;
           margin-bottom: 30px;
         }
+
+        .report-help {
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.report-modal {
+  max-width: 560px;
+}
+
+.report-textarea {
+  width: 100%;
+  min-height: 130px;
+  margin-top: 18px;
+  margin-bottom: 20px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(15,23,42,0.92);
+  color: white;
+  font-size: 15px;
+  font-family: Inter, Arial;
+  outline: none;
+  resize: none;
+  box-sizing: border-box;
+}
+
+.report-textarea::placeholder {
+  color: #94a3b8;
+}
+
+        .modal-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 24px;
+  align-items: stretch;
+}
+
+.report-textarea {
+  width: 100%;
+
+  min-height: 110px;
+
+  margin-top: 22px;
+  margin-bottom: 20px;
+
+  padding: 18px;
+
+  border-radius: 24px;
+
+  border:
+    1px solid rgba(255,255,255,0.08);
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(15,23,42,0.92),
+      rgba(15,23,42,0.82)
+    );
+
+  color: white;
+
+  font-size: 15px;
+
+  font-family: Inter, Arial;
+
+  outline: none;
+
+  resize: none;
+
+  box-sizing: border-box;
+
+  transition: 0.2s;
+}
+
+.report-textarea:focus {
+  border:
+    1px solid rgba(59,130,246,0.35);
+
+  background:
+    rgba(15,23,42,0.98);
+}
+
+.report-textarea::placeholder {
+  color: #94a3b8;
+}
+
+.modal-actions button {
+  width: 100%;
+  height: 52px;
+  min-height: 52px;
+  margin: 0;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.report-btn {
+  padding: 14px;
+
+  border: none;
+
+  border-radius: 999px;
+
+  background:
+    rgba(220,38,38,0.16);
+
+  color: #fecaca;
+
+  font-weight: 900;
+
+  cursor: pointer;
+}
 
         .complete-btn {
   padding: 10px 14px;
@@ -441,6 +821,27 @@ button:disabled {
   z-index: 999;
   padding: 24px 20px;
   overflow-y: auto;
+}
+
+.report-btn {
+  width: 100%;
+
+  margin-top: 18px;
+
+  padding: 14px;
+
+  border: none;
+
+  border-radius: 999px;
+
+  background:
+    rgba(220,38,38,0.16);
+
+  color: #fecaca;
+
+  font-weight: 900;
+
+  cursor: pointer;
 }
 
 .modal {

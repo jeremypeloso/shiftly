@@ -12,8 +12,10 @@ import DriverProfile from "./pages/DriverProfile";
 import DriverAvailability from "./pages/DriverAvailability";
 import DriverMissions from "./pages/DriverMissions";
 import CompanyMissions from "./pages/CompanyMissions";
-import CompanyBilling from "./pages/CompanyBilling";
 import Notifications from "./pages/Notifications";
+import AdminDashboard from "./pages/AdminDashboard";
+import SupportTicket from "./pages/SupportTicket";
+import AdminNotifications from "./pages/AdminNotifications";
 
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -107,19 +109,37 @@ export default function App() {
 />
 
 <Route
-  path="/company/billing"
+  path="/notifications"
   element={
     <ProtectedRoute>
-      <CompanyBilling />
+      <Notifications />
     </ProtectedRoute>
   }
 />
 
 <Route
-  path="/notifications"
+  path="/admin"
   element={
     <ProtectedRoute>
-      <Notifications />
+      <AdminDashboard />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/support/:ticketId"
+  element={
+    <ProtectedRoute>
+      <SupportTicket />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/admin-notifications"
+  element={
+    <ProtectedRoute>
+      <AdminNotifications />
     </ProtectedRoute>
   }
 />

@@ -396,8 +396,32 @@ setSelectedMission(null);
 
   async function deleteMission(missionToDelete) {
   if (!missionToDelete?.id) {
-    console.error("Mission sans ID", missionToDelete);
+    console.error("Mission sans ID");
     return;
+  }
+
+  const { data: tickets } = await supabase
+    .from("support_tickets")
+    .select("id")
+    .eq("mission_id", missionToDelete.id);
+
+  if (tickets?.length) {
+    const ticketIds = tickets.map((t) => t.id);
+
+    await supabase
+      .from("notifications")
+      .delete()
+      .in("ticket_id", ticketIds);
+
+    await supabase
+      .from("ticket_messages")
+      .delete()
+      .in("ticket_id", ticketIds);
+
+    await supabase
+      .from("support_tickets")
+      .delete()
+      .in("id", ticketIds);
   }
 
   const { error } = await supabase
@@ -406,7 +430,10 @@ setSelectedMission(null);
     .eq("id", missionToDelete.id);
 
   if (error) {
-    console.error(error);
+    console.error(
+      "Erreur suppression mission :",
+      error
+    );
     alert("Erreur suppression mission");
     return;
   }
@@ -414,7 +441,8 @@ setSelectedMission(null);
   setCreatedMissions((prev) =>
     prev.filter(
       (mission) =>
-        String(mission.id) !== String(missionToDelete.id)
+        String(mission.id) !==
+        String(missionToDelete.id)
     )
   );
 
@@ -430,27 +458,43 @@ setSelectedMission(null);
   const { error } = await supabase
     .from("missions")
     .update({
-      title: editMission.title,
-      pickup: editMission.pickup,
-      dropoff: editMission.dropoff,
-      start_time: editMission.start,
-      end_time: editMission.end,
-      vehicle: editMission.vehicle,
-      passengers: editMission.passengers,
-      price: editMission.price,
-      comment: editMission.comment,
-      status: editMission.status,
-      color:
-        editMission.status === "Ouverte"
-          ? "#2563eb"
-          : editMission.status === "Pourvue"
-          ? "#16a34a"
-          : "#64748b",
-    })
+  title: editMission.title || "",
+  pickup: editMission.pickup || "",
+  dropoff: editMission.dropoff || "",
+  start_time: editMission.start,
+  end_time: editMission.end,
+  vehicle: editMission.vehicle || "",
+  passengers: editMission.passengers || "",
+  price: editMission.price || "",
+  comment: editMission.comment || "",
+
+  status:
+    editMission.status || "Ouverte",
+
+  color:
+    editMission.status === "Ouverte"
+      ? "#2563eb"
+      : editMission.status === "Pourvue"
+      ? "#16a34a"
+      : "#64748b",
+
+  driver_name:
+    editMission.driver ||
+    "Non attribué",
+})
     .eq("id", editMission.id);
 
   if (error) {
-    console.error(error);
+    console.log("Payload envoyé :", {
+  title: editMission.title,
+  pickup: editMission.pickup,
+  dropoff: editMission.dropoff,
+  start_time: editMission.start,
+  end_time: editMission.end,
+  status: editMission.status,
+});
+
+console.error("Erreur Supabase complète :", JSON.stringify(error, null, 2));
     alert("Erreur modification mission");
     return;
   }
@@ -460,44 +504,140 @@ setSelectedMission(null);
   setEditMission(null);
 }
 
-  function calculateDriverMatch(mission, driver) {
+  function toArray(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return String(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalize(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function calculateDriverMatch(mission, driver) {
   let score = 0;
 
-  const missionDate = String(mission.start || "").slice(0, 10);
+  const missionDepartment = String(
+    mission.pickupDepartment ||
+    mission.pickup_department ||
+    ""
+  ).toLowerCase();
 
-  if (driver.availability_days?.includes(missionDate)) score += 30;
+  const missionType = String(
+    mission.type ||
+    mission.mission_type ||
+    ""
+  ).toLowerCase();
 
-  if (
-    driver.preferred_departments?.includes(mission.pickupDepartment) ||
-    driver.preferred_departments?.includes("France entière") ||
-    driver.preferred_departments?.includes("Europe")
-  ) {
+  const driverZones =
+    driver.mobility_zones || [];
+
+  const driverPermits =
+    driver.permits || [];
+
+  const driverMissionTypes =
+    driver.mission_types || [];
+
+  const requiredPermits =
+    mission.requiredPermits ||
+    mission.required_permits ||
+    [];
+
+  const requiredDocuments =
+    mission.requiredDocuments ||
+    mission.required_documents ||
+    [];
+
+  const driverFco =
+    driver.fco_status || "";
+
+  const driverRcpro =
+    driver.rcpro_status || "";
+
+  // MATCH ZONE
+  const zoneMatch = driverZones.some(
+    (zone) => {
+      const z = String(zone)
+        .toLowerCase()
+        .trim();
+
+      return (
+        missionDepartment.includes(z) ||
+        z.includes(missionDepartment) ||
+        z === "france entière" ||
+        z === "europe"
+      );
+    }
+  );
+
+  if (zoneMatch) {
+    score += 30;
+  }
+
+  // MATCH PERMIS
+  const permitMatch =
+    requiredPermits.some((permit) =>
+      driverPermits.includes(permit)
+    );
+
+  if (permitMatch) {
     score += 25;
   }
 
+  // MATCH FCO
   if (
-    mission.requiredPermits?.some((permit) =>
-      driver.permits?.includes(permit)
-    )
+    requiredDocuments.includes("FCO") &&
+    driverFco === "À jour"
   ) {
     score += 20;
   }
 
+  // MATCH RCPRO
   if (
-    mission.requiredDocuments?.includes("FCO") &&
-    driver.fco_status === "À jour"
+    requiredDocuments.includes("RCPRO") &&
+    driverRcpro === "Oui"
   ) {
     score += 10;
   }
 
-  if (
-    mission.requiredDocuments?.includes("RCPRO") &&
-    driver.rcpro_status === "Oui"
-  ) {
-    score += 10;
+  // MATCH TYPE MISSION
+  const typeMatch =
+    driverMissionTypes.some(
+      (type) =>
+        String(type)
+          .toLowerCase()
+          .trim() === missionType
+    );
+
+  if (typeMatch) {
+    score += 15;
   }
 
-  if (driver.mission_types?.includes(mission.type)) score += 5;
+  console.log("DEBUG MATCH", {
+  mission: mission.title,
+  missionDepartment,
+  missionType,
+  requiredPermits,
+  requiredDocuments,
+  driver: driver.full_name,
+  driverZones,
+  driverPermits,
+  driverMissionTypes,
+  driverFco,
+  driverRcpro,
+  score,
+});
+  // SCORE MINIMUM
+  if (score === 0) {
+    score = 10;
+  }
 
   return score;
 }
@@ -555,34 +695,6 @@ function getRecommendedDrivers(mission) {
   </div>
 </button>
 
-<button
-  className="notif-btn"
-  onClick={() => navigate("/notifications")}
->
-  <span>🔔 Notifications</span>
-
-  <span className="notif-badge">
-    {notifications.filter((n) => !n.is_read).length}
-  </span>
-</button>
-
-          <button
-  className="billing-menu-btn"
-  onClick={() => navigate("/company/billing")}
->
-  <span>Facturation</span>
-
-  <span className="billing-badge">
-    {
-      createdMissions.filter(
-        (mission) =>
-          mission.status === "Terminée" &&
-          mission.invoice_status !== "Payée"
-      ).length
-    }
-  </span>
-</button>
-
           <button className="logout-btn" onClick={logout}>
             Déconnexion
           </button>
@@ -602,12 +714,36 @@ function getRecommendedDrivers(mission) {
             <h1>Espace entreprise</h1>
           </div>
 
-          <button
-            className="create"
-            onClick={() => navigate("/company/create-mission")}
-          >
-            + Publier une mission
-          </button>
+          <div className="driver-top-right">
+
+  <button
+    className="create"
+    onClick={() => navigate("/company/create-mission")}
+  >
+    + Publier une mission
+  </button>
+
+  <button
+    className="notif-pill"
+    onClick={() => navigate("/notifications")}
+  >
+    <div className="notif-left">
+      <span className="notif-icon">🔔</span>
+    </div>
+
+    {notifications.filter((n) => !n.is_read).length > 0 && (
+      <div className="notif-count">
+        {
+          notifications.filter(
+            (n) => !n.is_read
+          ).length
+        }
+      </div>
+    )}
+  </button>
+
+</div>
+
         </header>
 
         <section className="cards">
@@ -1108,27 +1244,6 @@ function getRecommendedDrivers(mission) {
   color: white;
 }
 
-.billing-menu-btn {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.billing-badge {
-  min-width: 26px;
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: rgba(249,115,22,0.18);
-  color: #fdba74;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 900;
-}
-
 .confirm-actions {
   display: flex;
   gap: 12px;
@@ -1240,23 +1355,65 @@ function getRecommendedDrivers(mission) {
           border: none !important;
         }
 
-        .notif-btn {
-  display: flex;
-  justify-content: space-between;
+        .notif-pill {
+  display: inline-flex;
+
   align-items: center;
+  justify-content: space-between;
+
   gap: 12px;
+
+  padding: 10px 14px;
+
+  border: 1px solid rgba(255,255,255,0.08);
+
+  border-radius: 999px;
+
+  background:
+    rgba(255,255,255,0.05);
+
+  color: white;
+
+  cursor: pointer;
+
+  transition: 0.2s;
 }
 
-.notif-badge {
-  min-width: 26px;
-  height: 26px;
-  padding: 0 8px;
+.notif-pill:hover {
+  background:
+    rgba(255,255,255,0.08);
+}
+
+.notif-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.notif-icon {
+  font-size: 15px;
+}
+
+.notif-count {
+  min-width: 22px;
+  height: 22px;
+
+  padding: 0 6px;
+
   border-radius: 999px;
-  background: rgba(239,68,68,0.18);
+
+  background:
+    rgba(239,68,68,0.18);
+
   color: #fca5a5;
-  display: inline-flex;
+
+  display: flex;
   align-items: center;
   justify-content: center;
+
   font-size: 11px;
   font-weight: 900;
 }
@@ -1279,12 +1436,17 @@ function getRecommendedDrivers(mission) {
         }
 
         .top {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 20px;
-          padding: 18px 0 26px;
-        }
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 0 26px;
+}
+
+.driver-top-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 
         .top p {
           color: #94a3b8;

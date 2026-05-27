@@ -15,6 +15,8 @@ export default function DriverDashboard() {
   const [invitations, setInvitations] = useState([]);
   const [selectedMission, setSelectedMission] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  
 
   const actionLockRef = useRef(false);
   const loadIdRef = useRef(0);
@@ -33,6 +35,25 @@ export default function DriverDashboard() {
     navigate(path);
     actionLockRef.current = false;
   }, 150);
+}
+
+async function loadNotifications() {
+  const user = await getCurrentUser();
+
+  if (!user) return;
+
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  setNotifications(data || []);
 }
 
   function calculateMatchScore(mission, driver) {
@@ -160,6 +181,7 @@ name: profileData.full_name || "Conducteur",
       requiredDocuments: mission.required_documents || [],
       driver: mission.driver_name,
       driverId: mission.driver_id,
+      companyId: mission.company_id,
       vehicle: mission.vehicle,
       type: mission.mission_type,
       passengers: mission.passengers,
@@ -167,7 +189,6 @@ name: profileData.full_name || "Conducteur",
       comment: mission.comment,
       documents: mission.documents,
       matchScore: calculateMatchScore(mission, currentDriver),
-      invoice_status: mission.invoice_status,
       applied: applicationsData.some(
         (app) =>
           String(app.mission_id) === String(mission.id) &&
@@ -199,71 +220,69 @@ name: profileData.full_name || "Conducteur",
   useEffect(() => {
   let reloadTimeout = null;
 
-  const startRealtime = () => {
-    const reloadSafely = () => {
-      if (actionLockRef.current) return;
+  loadDriverData();
+  loadNotifications();
 
-      clearTimeout(reloadTimeout);
+  const interval = setInterval(() => {
+    loadNotifications();
+  }, 5000);
 
-      reloadTimeout = setTimeout(() => {
-        loadDriverData();
-      }, 500);
-    };
+  const reloadSafely = () => {
+    if (actionLockRef.current) return;
 
-    const missionsChannel = supabase
-      .channel("missions-live-driver")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "missions",
-        },
-        reloadSafely
-      )
-      .subscribe();
+    clearTimeout(reloadTimeout);
 
-    const applicationsChannel = supabase
-      .channel("applications-live-driver")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "applications",
-        },
-        reloadSafely
-      )
-      .subscribe();
-
-    const invitationsChannel = supabase
-      .channel("invitations-live-driver")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "mission_invitations",
-        },
-        reloadSafely
-      )
-      .subscribe();
-
-    return () => {
-      clearTimeout(reloadTimeout);
-
-      supabase.removeChannel(missionsChannel);
-      supabase.removeChannel(applicationsChannel);
-      supabase.removeChannel(invitationsChannel);
-    };
+    reloadTimeout = setTimeout(() => {
+      loadDriverData();
+    }, 500);
   };
 
-  loadDriverData();
+  const missionsChannel = supabase
+    .channel("missions-live-driver")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "missions",
+      },
+      reloadSafely
+    )
+    .subscribe();
 
-  const cleanup = startRealtime();
+  const applicationsChannel = supabase
+    .channel("applications-live-driver")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "applications",
+      },
+      reloadSafely
+    )
+    .subscribe();
+
+  const invitationsChannel = supabase
+    .channel("invitations-live-driver")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "mission_invitations",
+      },
+      reloadSafely
+    )
+    .subscribe();
 
   return () => {
-    if (cleanup) cleanup();
+    clearInterval(interval);
+    clearTimeout(reloadTimeout);
+
+    supabase.removeChannel(missionsChannel);
+    supabase.removeChannel(applicationsChannel);
+    supabase.removeChannel(invitationsChannel);
   };
 }, [loadDriverData]);
 
@@ -299,6 +318,22 @@ name: profileData.full_name || "Conducteur",
           driver_availability: driverProfile.availability,
         },
       ]);
+
+      await supabase
+  .from("notifications")
+  .insert([
+    {
+      user_id: mission.companyId,
+      title: "Nouvelle candidature",
+      message: `${
+        driverProfile?.name ||
+        "Un conducteur"
+      } a postulé à votre mission : ${
+        mission.title
+      }`,
+      type: "application",
+    },
+  ]);
 
       if (error) {
         console.error(error);
@@ -435,20 +470,6 @@ await supabase.from("shift_score_events").insert([
     }
   }
 
-  const estimatedRevenue = myMissions
-  .filter((mission) => mission.invoice_status !== "Payée")
-  .reduce((total, mission) => {
-    const price = parseInt(String(mission.price || "0").replace(/\D/g, ""), 10);
-    return total + (isNaN(price) ? 0 : price);
-  }, 0);
-
-const totalRevenue = myMissions
-  .filter((mission) => mission.invoice_status === "Payée")
-  .reduce((total, mission) => {
-    const price = parseInt(String(mission.price || "0").replace(/\D/g, ""), 10);
-    return total + (isNaN(price) ? 0 : price);
-  }, 0);
-
   const pendingInvitations = invitations.filter(
     (invitation) =>
       invitation.status !== "Acceptée" && invitation.status !== "Refusée"
@@ -488,22 +509,48 @@ const totalRevenue = myMissions
       </aside>
 
       <main className="content">
-        <header className="top">
-          <div>
-            <p>
-  Bonjour{" "}
-  {driverProfile?.name ||
-    driverProfile?.fullName ||
-    "conducteur"}{" "}
-  👋
-</p>
-            <h1>Tableau conducteur</h1>
-          </div>
+       <header className="top">
 
-          <div className="score">
-            ⭐ ShiftScore {driverProfile?.shiftScore ?? 0}
-          </div>
-        </header>
+  <div>
+    <p>
+      Bonjour{" "}
+      {driverProfile?.name ||
+        driverProfile?.fullName ||
+        "conducteur"} 👋
+    </p>
+
+    <h1>Tableau conducteur</h1>
+  </div>
+
+  <div className="driver-top-right">
+
+    <div className="score">
+      ⭐ ShiftScore {driverProfile?.shiftScore ?? 0}
+    </div>
+
+    <button
+      className="notif-pill"
+      onClick={() => navigate("/notifications")}
+    >
+      <div className="notif-left">
+        <span className="notif-icon">🔔</span>
+      </div>
+
+      {notifications.filter((n) => !n.is_read).length > 0 && (
+        <div className="notif-count">
+          {
+            notifications.filter(
+              (n) => !n.is_read
+            ).length
+          }
+        </div>
+      )}
+    </button>
+
+  </div>
+
+</header>
+
 
         <section className="cards">
           <div className="card">
@@ -521,19 +568,6 @@ const totalRevenue = myMissions
             <strong>{pendingInvitations.length}</strong>
           </div>
 
-          <div className="card revenue-card">
-  <div>
-    <span>Revenus estimés</span>
-    <strong>{estimatedRevenue} €</strong>
-  </div>
-
-  <div className="divider"></div>
-
-  <div>
-    <span>Revenus total</span>
-    <strong>{totalRevenue} €</strong>
-  </div>
-</div>
         </section>
 
         <section className="calendar-section">
@@ -729,6 +763,27 @@ const totalRevenue = myMissions
   gap: 10px;
 }
 
+.notif-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.notif-badge {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(239,68,68,0.18);
+  color: #fca5a5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .badge {
   min-width: 24px;
   height: 24px;
@@ -751,17 +806,73 @@ const totalRevenue = myMissions
           flex-shrink: 0;
         }
 
-        .revenue-card {
-  display: flex;
+.notif-pill {
+  display: inline-flex;
+
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+
+  gap: 12px;
+
+  padding: 10px 14px;
+
+  border: 1px solid rgba(255,255,255,0.08);
+
+  border-radius: 999px;
+
+  background:
+    rgba(255,255,255,0.05);
+
+  color: white;
+
+  cursor: pointer;
+
+  transition: 0.2s;
 }
 
-.divider {
-  width: 1px;
-  align-self: stretch;
-  background: rgba(255,255,255,0.08);
+.notif-pill:hover {
+  background:
+    rgba(255,255,255,0.08);
+}
+
+.notif-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.driver-top-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.notif-icon {
+  font-size: 15px;
+}
+
+.notif-count {
+  min-width: 22px;
+  height: 22px;
+
+  padding: 0 6px;
+
+  border-radius: 999px;
+
+  background:
+    rgba(239,68,68,0.18);
+
+  color: #fca5a5;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 11px;
+  font-weight: 900;
 }
 
         .sidebar h2 {
@@ -838,11 +949,11 @@ const totalRevenue = myMissions
         }
 
         .cards {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 18px;
-          margin-top: 40px;
-        }
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-top: 40px;
+}
 
         .card {
           background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));

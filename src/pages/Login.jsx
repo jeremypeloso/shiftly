@@ -72,13 +72,33 @@ export default function Login() {
       return;
     }
 
-    if (profile.role === "driver") {
-      navigate("/driver");
-    } else {
-      navigate("/company");
-    }
-  }
+    if (profile?.is_suspended === true) {
+  await supabase.auth.signOut();
 
+  alert(
+    "Votre compte est suspendu. Contactez l’administrateur."
+  );
+
+  navigate("/login");
+
+  return;
+}
+
+if (profile?.is_admin === true) {
+  navigate("/admin");
+  return;
+}
+
+if (profile?.role === "driver") {
+  navigate("/driver");
+  return;
+}
+
+if (profile?.role === "company") {
+  navigate("/company");
+  return;
+}
+}
   return (
     <main
       style={styles.page}
