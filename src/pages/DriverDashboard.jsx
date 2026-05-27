@@ -168,6 +168,8 @@ name: profileData.full_name || "Conducteur",
     }
 
     const formattedMissions = missionsData.map((mission) => ({
+      companyName: mission.company_name,
+companyVerified: mission.company_verified,
       id: mission.id,
       title: mission.title,
       status: mission.status,
@@ -718,6 +720,15 @@ await supabase.from("shift_score_events").insert([
             {openMissions.map((mission) => (
               <div className="mission" key={mission.id}>
                 <div>
+                  <p className="company-name">
+  {mission.companyName}
+</p>
+
+{mission.companyVerified && (
+  <div className="verified-company">
+    ✅ Entreprise vérifiée
+  </div>
+)}
                   <strong>{mission.title}</strong>
                   <p>📍 {mission.pickup} → {mission.dropoff}</p>
                   <p>📅 Départ : {new Date(mission.start).toLocaleString("fr-FR")}</p>
@@ -1222,6 +1233,35 @@ await supabase.from("shift_score_events").insert([
           color: white;
           cursor: pointer;
         }
+
+        .verified-company {
+  display: inline-flex;
+
+  margin-top: 8px;
+
+  padding: 6px 12px;
+
+  border-radius: 999px;
+
+  background:
+    rgba(22,163,74,.15);
+
+  color: #86efac;
+
+  font-size: 12px;
+
+  font-weight: 800;
+}
+
+.company-name {
+  color: #cbd5e1;
+
+  font-size: 13px;
+
+  font-weight: 700;
+
+  margin-bottom: 8px;
+}
 
         @media (max-width: 900px) {
           .dashboard {

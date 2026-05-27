@@ -121,6 +121,9 @@ export default function CreateMission() {
             profile?.company_name ||
             profile?.full_name ||
             "Entreprise",
+
+            company_verified:
+  profile.company_verified || false,
         },
       ]);
 
@@ -176,6 +179,44 @@ export default function CreateMission() {
       required
     />
   </div>
+
+  <div className="field">
+  <label>
+    Adresse de départ
+  </label>
+
+  <input
+    type="text"
+    value={form.departureAddress}
+    onChange={(e) =>
+      updateField(
+        "departureAddress",
+        e.target.value
+      )
+    }
+    placeholder="Adresse de départ"
+    required
+  />
+</div>
+
+<div className="field">
+  <label>
+    Adresse d'arrivée
+  </label>
+
+  <input
+    type="text"
+    value={form.arrivalAddress}
+    onChange={(e) =>
+      updateField(
+        "arrivalAddress",
+        e.target.value
+      )
+    }
+    placeholder="Adresse d'arrivée"
+    required
+  />
+</div>
 
   <div className="field">
   <label>
@@ -252,60 +293,6 @@ export default function CreateMission() {
     required
   />
 </div>
-
-            <div className="field">
-              <label>
-                Heure départ
-              </label>
-
-              <input
-                type="time"
-                value={form.startTime}
-                onChange={(e) =>
-                  updateField(
-                    "startTime",
-                    e.target.value
-                  )
-                }
-                required
-              />
-            </div>
-
-            <div className="field">
-              <label>
-                Fin mission
-              </label>
-
-              <input
-                type="date"
-                value={form.endDate}
-                onChange={(e) =>
-                  updateField(
-                    "endDate",
-                    e.target.value
-                  )
-                }
-                required
-              />
-            </div>
-
-            <div className="field">
-              <label>
-                Heure retour
-              </label>
-
-              <input
-                type="time"
-                value={form.endTime}
-                onChange={(e) =>
-                  updateField(
-                    "endTime",
-                    e.target.value
-                  )
-                }
-                required
-              />
-            </div>
 
             <div className="field">
               <label>

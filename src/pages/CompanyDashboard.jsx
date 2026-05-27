@@ -692,6 +692,14 @@ function getRecommendedDrivers(mission) {
         <nav>
           <button className="active">Dashboard</button>
 
+          <button
+  onClick={() =>
+    navigate("/company/profile")
+  }
+>
+  Profil entreprise
+</button>
+
           <button onClick={() => navigate("/company/create-mission")}>
             Créer mission
           </button>

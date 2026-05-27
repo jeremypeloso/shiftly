@@ -16,6 +16,7 @@ import Notifications from "./pages/Notifications";
 import AdminDashboard from "./pages/AdminDashboard";
 import SupportTicket from "./pages/SupportTicket";
 import AdminNotifications from "./pages/AdminNotifications";
+import CompanyProfile from "./pages/CompanyProfile";
 
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -140,6 +141,15 @@ export default function App() {
   element={
     <ProtectedRoute>
       <AdminNotifications />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/company/profile"
+  element={
+    <ProtectedRoute>
+      <CompanyProfile />
     </ProtectedRoute>
   }
 />
