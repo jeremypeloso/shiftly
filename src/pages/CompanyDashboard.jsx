@@ -1235,7 +1235,11 @@ function getRecommendedDrivers(mission) {
   border-radius: 24px;
   background: linear-gradient(180deg, #111827, #0f172a);
   border: 1px solid rgba(255,255,255,0.1);
-  color: white;
+  color: #f87171;
+  border: 1px solid rgba(248,113,113,0.25);
+
+background:
+  rgba(127,29,29,0.25);
 }
 
 .confirm-actions {
