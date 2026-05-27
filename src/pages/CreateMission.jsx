@@ -9,21 +9,30 @@ export default function CreateMission() {
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
-    title: "",
-    pickup: "",
-    dropoff: "",
-    pickupDepartment: "",
-    startDate: "",
-    startTime: "",
-    endDate: "",
-    endTime: "",
-    vehicle: "",
-    passengers: "",
-    missionType: "",
-    price: "",
-    documents: [],
-    comment: "",
-  });
+  title: "",
+
+  departureAddress: "",
+  arrivalAddress: "",
+
+  pickupDepartment: "",
+
+  startDate: "",
+  startTime: "",
+
+  endDate: "",
+  endTime: "",
+
+  vehicle: "",
+  passengers: "",
+
+  missionType: "",
+
+  price: "",
+
+  documents: [],
+
+  comment: "",
+});
 
   function updateField(field, value) {
     setForm((prev) => ({
@@ -75,8 +84,8 @@ export default function CreateMission() {
       .insert([
         {
           title,
-          pickup: form.pickup,
-          dropoff: form.dropoff,
+          pickup: form.departureAddress,
+dropoff: form.arrivalAddress,
 
           pickup_department:
             form.pickupDepartment || "",
