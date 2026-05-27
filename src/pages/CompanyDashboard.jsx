@@ -1928,6 +1928,11 @@ overflow-y: auto;
           .application-card button {
             width: 100%;
           }
+
+          .mobile-actions .mobile-logout {
+  display: flex !important;
+  position: relative;
+}
         }
       `}</style>
     </div>
