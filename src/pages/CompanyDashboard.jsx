@@ -1396,7 +1396,7 @@ function getRecommendedDrivers(mission) {
 .driver-top-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 16px;
 }
 
         .top p {
