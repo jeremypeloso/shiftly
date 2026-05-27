@@ -9,6 +9,7 @@ export default function CreateMission() {
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
+    title: "",
     pickup: "",
     dropoff: "",
     pickupDepartment: "",
@@ -67,7 +68,7 @@ export default function CreateMission() {
     const start = `${form.startDate}T${form.startTime}`;
     const end = `${form.endDate}T${form.endTime}`;
 
-    const title = `${form.pickup} → ${form.dropoff}`;
+    const title = form.title;
 
     const { error } = await supabase
       .from("missions")
@@ -162,41 +163,45 @@ export default function CreateMission() {
 
         <form onSubmit={createMission}>
           <div className="grid">
-            <div className="field">
-              <label>
-                Adresse départ
-              </label>
 
-              <input
-                placeholder="Ex : Paris"
-                value={form.pickup}
-                onChange={(e) =>
-                  updateField(
-                    "pickup",
-                    e.target.value
-                  )
-                }
-                required
-              />
-            </div>
+  <div className="field full">
+    <label>Titre mission</label>
 
-            <div className="field">
-              <label>
-                Adresse arrivée
-              </label>
+    <input
+      placeholder="Ex : Séjour scolaire"
+      value={form.title}
+      onChange={(e) =>
+        updateField("title", e.target.value)
+      }
+      required
+    />
+  </div>
 
-              <input
-                placeholder="Ex : Lyon"
-                value={form.dropoff}
-                onChange={(e) =>
-                  updateField(
-                    "dropoff",
-                    e.target.value
-                  )
-                }
-                required
-              />
-            </div>
+  <div className="field">
+    <label>Adresse départ</label>
+
+    <input
+      placeholder="Ex : Paris"
+      value={form.pickup}
+      onChange={(e) =>
+        updateField("pickup", e.target.value)
+      }
+      required
+    />
+  </div>
+
+  <div className="field">
+    <label>Adresse arrivée</label>
+
+    <input
+      placeholder="Ex : Lyon"
+      value={form.dropoff}
+      onChange={(e) =>
+        updateField("dropoff", e.target.value)
+      }
+      required
+    />
+  </div>
 
             <div className="field">
               <label>

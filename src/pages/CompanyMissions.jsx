@@ -33,6 +33,83 @@ export default function CompanyMissions() {
     setMissions(data || []);
   }
 
+  const activeMissions = missions.filter(
+    (mission) =>
+      mission.status === "Ouverte" ||
+      mission.status === "Pourvue"
+  );
+
+  const archivedMissions = missions.filter(
+    (mission) =>
+      mission.status === "Terminée" ||
+      mission.status === "Annulée"
+  );
+
+  async function markMissionDone(mission) {
+  await supabase
+    .from("missions")
+    .update({
+      status: "Terminée",
+      color: "#64748b",
+    })
+    .eq("id", mission.id);
+
+  await loadMissions();
+}
+
+  function renderMissionCard(mission) {
+  return (
+    <div className="card" key={mission.id}>
+      <span
+        className={
+          mission.driver_name &&
+          mission.driver_name !== "Non attribué"
+            ? "assigned"
+            : "waiting"
+        }
+      >
+        {mission.driver_name &&
+        mission.driver_name !== "Non attribué"
+          ? "Conducteur attribué"
+          : "En attente d’attribution"}
+      </span>
+
+      <h2>{mission.title}</h2>
+
+      <p>
+        📍 {mission.pickup} → {mission.dropoff}
+      </p>
+
+      <p>
+        📅{" "}
+        {new Date(
+          mission.start_time
+        ).toLocaleString("fr-FR")}
+      </p>
+
+      <div className="driver-box">
+        <span>Conducteur</span>
+
+        <strong>
+          {mission.driver_name ||
+            "Aucun conducteur"}
+        </strong>
+      </div>
+
+      {mission.status === "Pourvue" && (
+        <button
+          className="done-btn"
+          onClick={() =>
+            markMissionDone(mission)
+          }
+        >
+          Marquer terminée
+        </button>
+      )}
+    </div>
+  );
+}
+
   return (
     <main className="page">
       <header className="top">
@@ -49,46 +126,36 @@ export default function CompanyMissions() {
         </button>
       </header>
 
-      <section className="grid">
-        {missions.map((mission) => (
-          <div className="card" key={mission.id}>
-            <span
-  className={
-    mission.driver_name &&
-    mission.driver_name !== "Non attribué"
-      ? "assigned"
-      : "waiting"
-  }
->
-  {mission.driver_name &&
-  mission.driver_name !== "Non attribué"
-    ? "Conducteur attribué"
-    : "En attente d’attribution"}
-</span>
+      <section className="missions-section">
+        <div className="section-title">
+          <h2>Missions en cours</h2>
 
-            <h2>{mission.title}</h2>
+          <span>
+            {activeMissions.length}
+          </span>
+        </div>
 
-            <p>
-              📍 {mission.pickup} → {mission.dropoff}
-            </p>
+        <div className="grid">
+          {activeMissions.map((mission) =>
+            renderMissionCard(mission)
+          )}
+        </div>
+      </section>
 
-            <p>
-              📅{" "}
-              {new Date(
-                mission.start_time
-              ).toLocaleString("fr-FR")}
-            </p>
+      <section className="missions-section">
+        <div className="section-title">
+          <h2>Missions archivées</h2>
 
-            <div className="driver-box">
-              <span>Conducteur</span>
+          <span>
+            {archivedMissions.length}
+          </span>
+        </div>
 
-              <strong>
-                {mission.driver_name ||
-                  "Aucun conducteur"}
-              </strong>
-            </div>
-          </div>
-        ))}
+        <div className="grid">
+          {archivedMissions.map((mission) =>
+            renderMissionCard(mission)
+          )}
+        </div>
       </section>
 
       <style>{`
@@ -126,30 +193,58 @@ export default function CompanyMissions() {
           cursor: pointer;
         }
 
-        .waiting {
-  background: rgba(249,115,22,0.18);
-  color: #fdba74;
-}
-
-.assigned,
-.waiting {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 10px;
+        .done-btn {
+  width: 100%;
+  margin-top: 16px;
+  padding: 13px;
   border-radius: 999px;
-  font-size: 12px;
+  border: none;
+  background: linear-gradient(180deg, #64748b, #475569);
+  color: white;
   font-weight: 900;
+  cursor: pointer;
 }
 
-.assigned {
-  background: rgba(22,163,74,0.2);
-  color: #86efac;
-}
+        .missions-section {
+          margin-bottom: 40px;
+        }
 
-.waiting {
-  background: rgba(249,115,22,0.18);
-  color: #fdba74;
-}
+        .section-title {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+        }
+
+        .section-title h2 {
+          margin: 0;
+          font-size: 28px;
+        }
+
+        .section-title span {
+          color: #94a3b8;
+          font-weight: 800;
+        }
+
+        .assigned,
+        .waiting {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 900;
+        }
+
+        .assigned {
+          background: rgba(22,163,74,0.2);
+          color: #86efac;
+        }
+
+        .waiting {
+          background: rgba(249,115,22,0.18);
+          color: #fdba74;
+        }
 
         .grid {
           display: grid;
@@ -160,33 +255,24 @@ export default function CompanyMissions() {
         .card {
           background:
             linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));
+
           border: 1px solid rgba(255,255,255,0.1);
+
           border-radius: 24px;
+
           padding: 24px;
         }
 
-        .assigned,
-        .open
-        .waiting {
-          display: inline-flex;
-          padding: 6px 10px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 900;
+        .card h2 {
+          margin-top: 16px;
+          margin-bottom: 14px;
         }
 
-        .waiting {
-  background: rgba(249,115,22,0.18);
-  color: #fdba74;
-}
-
-        .assigned {
-          background: rgba(22,163,74,0.2);
-          color: #86efac;
+        .card p {
+          color: #cbd5e1;
+          margin: 8px 0;
         }
 
-
-        
         .driver-box {
           margin-top: 18px;
           padding: 14px;
