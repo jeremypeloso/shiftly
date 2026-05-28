@@ -1,10 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import FullCalendar from "@fullcalendar/react";
-import dayGridPlugin from "@fullcalendar/daygrid";
-import interactionPlugin from "@fullcalendar/interaction";
+import {
+  BadgeCheck,
+  Bell,
+  Bus,
+  CalendarDays,
+  ChevronRight,
+  Clock3,
+  Home,
+  MapPin,
+  ShieldCheck,
+  Star,
+  User,
+} from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser } from "../lib/auth";
+
+const acceptedStatuses = ["Acceptée", "AcceptÃ©e"];
+const refusedStatuses = ["Refusée", "RefusÃ©e"];
 
 export default function DriverDashboard() {
   const navigate = useNavigate();
@@ -15,11 +28,40 @@ export default function DriverDashboard() {
   const [invitations, setInvitations] = useState([]);
   const [selectedMission, setSelectedMission] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [applyingMissionId, setApplyingMissionId] = useState(null);
   const [notifications, setNotifications] = useState([]);
-  
+  const [applicationNotice, setApplicationNotice] = useState(null);
 
   const actionLockRef = useRef(false);
   const loadIdRef = useRef(0);
+
+  const unreadCount = notifications.filter((notification) => !notification.is_read).length;
+
+  const pendingInvitations = invitations.filter(
+    (invitation) =>
+      !acceptedStatuses.includes(invitation.status) &&
+      !refusedStatuses.includes(invitation.status)
+  );
+
+  const recommendedMission = openMissions[0];
+
+  const weekDays = useMemo(() => {
+    const now = new Date();
+
+    return Array.from({ length: 5 }, (_, index) => {
+      const date = new Date(now);
+      date.setDate(now.getDate() + index);
+      const iso = date.toISOString().slice(0, 10);
+      const booked = myMissions.some((mission) => String(mission.start || "").slice(0, 10) === iso);
+
+      return {
+        day: date.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", ""),
+        date: date.getDate(),
+        active: index === 0,
+        booked,
+      };
+    });
+  }, [myMissions]);
 
   async function logout() {
     await supabase.auth.signOut();
@@ -27,34 +69,33 @@ export default function DriverDashboard() {
   }
 
   function safeNavigate(path) {
-  if (actionLockRef.current) return;
+    if (actionLockRef.current) return;
 
-  actionLockRef.current = true;
+    actionLockRef.current = true;
 
-  setTimeout(() => {
-    navigate(path);
-    actionLockRef.current = false;
-  }, 150);
-}
-
-async function loadNotifications() {
-  const user = await getCurrentUser();
-
-  if (!user) return;
-
-  const { data, error } = await supabase
-    .from("notifications")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error(error);
-    return;
+    setTimeout(() => {
+      navigate(path);
+      actionLockRef.current = false;
+    }, 150);
   }
 
-  setNotifications(data || []);
-}
+  async function loadNotifications() {
+    const user = await getCurrentUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    setNotifications(data || []);
+  }
 
   function calculateMatchScore(mission, driver) {
     let score = 0;
@@ -65,30 +106,21 @@ async function loadNotifications() {
     if (
       driver.preferredDepartments?.includes(mission.pickup_department) ||
       driver.preferredDepartments?.includes("France entière") ||
+      driver.preferredDepartments?.includes("France entiÃ¨re") ||
       driver.preferredDepartments?.includes("Europe")
     ) {
       score += 25;
     }
 
-    if (
-      mission.required_permits?.some((permit) =>
-        driver.permits?.includes(permit)
-      )
-    ) {
+    if (mission.required_permits?.some((permit) => driver.permits?.includes(permit))) {
       score += 20;
     }
 
-    if (
-      mission.required_documents?.includes("FCO") &&
-      driver.fcoStatus === "À jour"
-    ) {
+    if (mission.required_documents?.includes("FCO") && driver.fcoStatus === "À jour") {
       score += 10;
     }
 
-    if (
-      mission.required_documents?.includes("RCPRO") &&
-      driver.rcproStatus === "Oui"
-    ) {
+    if (mission.required_documents?.includes("RCPRO") && driver.rcproStatus === "Oui") {
       score += 10;
     }
 
@@ -99,13 +131,9 @@ async function loadNotifications() {
 
   const loadDriverData = useCallback(async () => {
     const loadId = ++loadIdRef.current;
-
     const user = await getCurrentUser();
 
-    if (!user) {
-  console.warn("Session absente temporairement");
-  return;
-}
+    if (!user) return;
 
     const { data: profileData, error: profileError } = await supabase
       .from("profiles")
@@ -121,7 +149,7 @@ async function loadNotifications() {
     const currentDriver = {
       id: user.id,
       fullName: profileData.full_name || "Conducteur",
-name: profileData.full_name || "Conducteur",
+      name: profileData.full_name || "Conducteur",
       city: profileData.city || "",
       permits: profileData.permits || [],
       fcoStatus: profileData.fco_status || "",
@@ -131,7 +159,8 @@ name: profileData.full_name || "Conducteur",
       availabilityDays: profileData.availability_days || [],
       preferredDepartments: profileData.preferred_departments || [],
       missionTypes: profileData.mission_types || [],
-      shiftScore: profileData.shift_score ?? 0
+      shiftScore: profileData.shift_score ?? 0,
+      verified: isDriverProfileVerified(profileData),
     };
 
     const { data: missionsData, error: missionsError } = await supabase
@@ -167,9 +196,9 @@ name: profileData.full_name || "Conducteur",
       return;
     }
 
-    const formattedMissions = missionsData.map((mission) => ({
+    const formattedMissions = (missionsData || []).map((mission) => ({
       companyName: mission.company_name,
-companyVerified: mission.company_verified,
+      companyVerified: mission.company_verified,
       id: mission.id,
       title: mission.title,
       status: mission.status,
@@ -191,11 +220,11 @@ companyVerified: mission.company_verified,
       comment: mission.comment,
       documents: mission.documents,
       matchScore: calculateMatchScore(mission, currentDriver),
-      applied: applicationsData.some(
-        (app) =>
-          String(app.mission_id) === String(mission.id) &&
-          String(app.driver_id) === String(currentDriver.id) &&
-          (app.status === "En attente" || app.status === "Acceptée")
+      applied: (applicationsData || []).some(
+        (application) =>
+          String(application.mission_id) === String(mission.id) &&
+          String(application.driver_id) === String(currentDriver.id) &&
+          (application.status === "En attente" || acceptedStatuses.includes(application.status))
       ),
     }));
 
@@ -203,96 +232,63 @@ companyVerified: mission.company_verified,
 
     setDriverProfile(currentDriver);
     setInvitations(invitationsData || []);
-
     setOpenMissions(
       formattedMissions
         .filter((mission) => mission.status === "Ouverte")
         .sort((a, b) => b.matchScore - a.matchScore)
     );
-
     setMyMissions(
       formattedMissions.filter(
-        (mission) =>
-          String(mission.driverId) === String(currentDriver.id) &&
-          mission.status === "Pourvue"
+        (mission) => String(mission.driverId) === String(currentDriver.id) && mission.status === "Pourvue"
       )
     );
   }, []);
 
   useEffect(() => {
-  let reloadTimeout = null;
+    let reloadTimeout = null;
 
-  loadDriverData();
-  loadNotifications();
-
-  const interval = setInterval(() => {
+    loadDriverData();
     loadNotifications();
-  }, 5000);
 
-  const reloadSafely = () => {
-    if (actionLockRef.current) return;
+    const interval = setInterval(loadNotifications, 5000);
 
-    clearTimeout(reloadTimeout);
+    const reloadSafely = () => {
+      if (actionLockRef.current) return;
 
-    reloadTimeout = setTimeout(() => {
-      loadDriverData();
-    }, 500);
-  };
+      clearTimeout(reloadTimeout);
+      reloadTimeout = setTimeout(loadDriverData, 500);
+    };
 
-  const missionsChannel = supabase
-    .channel("missions-live-driver")
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "missions",
-      },
-      reloadSafely
-    )
-    .subscribe();
+    const missionsChannel = supabase
+      .channel("missions-live-driver")
+      .on("postgres_changes", { event: "*", schema: "public", table: "missions" }, reloadSafely)
+      .subscribe();
 
-  const applicationsChannel = supabase
-    .channel("applications-live-driver")
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "applications",
-      },
-      reloadSafely
-    )
-    .subscribe();
+    const applicationsChannel = supabase
+      .channel("applications-live-driver")
+      .on("postgres_changes", { event: "*", schema: "public", table: "applications" }, reloadSafely)
+      .subscribe();
 
-  const invitationsChannel = supabase
-    .channel("invitations-live-driver")
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "mission_invitations",
-      },
-      reloadSafely
-    )
-    .subscribe();
+    const invitationsChannel = supabase
+      .channel("invitations-live-driver")
+      .on("postgres_changes", { event: "*", schema: "public", table: "mission_invitations" }, reloadSafely)
+      .subscribe();
 
-  return () => {
-    clearInterval(interval);
-    clearTimeout(reloadTimeout);
-
-    supabase.removeChannel(missionsChannel);
-    supabase.removeChannel(applicationsChannel);
-    supabase.removeChannel(invitationsChannel);
-  };
-}, [loadDriverData]);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(reloadTimeout);
+      supabase.removeChannel(missionsChannel);
+      supabase.removeChannel(applicationsChannel);
+      supabase.removeChannel(invitationsChannel);
+    };
+  }, [loadDriverData]);
 
   async function applyToMission(mission) {
     if (actionLockRef.current) return;
 
     actionLockRef.current = true;
     setActionLoading(true);
+    setApplyingMissionId(mission.id);
 
     try {
       if (!driverProfile) {
@@ -300,11 +296,40 @@ companyVerified: mission.company_verified,
         return;
       }
 
-      const alreadyApplied = openMissions.find(
-        (item) => item.id === mission.id && item.applied
-      );
+      if (mission.applied) {
+        showApplicationNotice({
+          type: "info",
+          title: "Candidature déjà envoyée",
+          message: "Tu as déjà postulé à cette mission. Elle reste visible avec le statut correspondant.",
+        });
+        markMissionAsApplied(mission.id);
+        return;
+      }
 
-      if (alreadyApplied) return;
+      const { data: existingApplications, error: existingError } = await supabase
+        .from("applications")
+        .select("id")
+        .eq("mission_id", mission.id)
+        .eq("driver_id", driverProfile.id)
+        .limit(1);
+
+      if (existingError) {
+        console.error(existingError);
+        alert("Erreur vérification candidature");
+        return;
+      }
+
+      if (existingApplications?.length) {
+        markMissionAsApplied(mission.id);
+        showApplicationNotice({
+          type: "info",
+          title: "Candidature déjà envoyée",
+          message: "Tu avais déjà postulé à cette mission. Aucun doublon n'a été créé.",
+        });
+        return;
+      }
+
+      markMissionAsApplied(mission.id);
 
       const { error } = await supabase.from("applications").insert([
         {
@@ -321,47 +346,66 @@ companyVerified: mission.company_verified,
         },
       ]);
 
-      await supabase
-  .from("notifications")
-  .insert([
-    {
-      user_id: mission.companyId,
-      title: "Nouvelle candidature",
-      message: `${
-        driverProfile?.name ||
-        "Un conducteur"
-      } a postulé à votre mission : ${
-        mission.title
-      }`,
-      type: "application",
-    },
-  ]);
-
       if (error) {
         console.error(error);
+        markMissionAsApplied(mission.id, false);
         alert("Erreur candidature");
         return;
       }
 
+      await supabase.from("notifications").insert([
+        {
+          user_id: mission.companyId,
+          title: "Nouvelle candidature",
+          message: `${driverProfile.name || "Un conducteur"} a postulé à votre mission : ${mission.title}`,
+          type: "application",
+        },
+      ]);
+
       await loadDriverData();
+      showApplicationNotice({
+        type: "success",
+        title: "Candidature envoyée",
+        message: `Ta candidature pour "${mission.title}" a bien été transmise à l'entreprise.`,
+      });
     } finally {
       actionLockRef.current = false;
       setActionLoading(false);
+      setApplyingMissionId(null);
     }
   }
 
+  function showApplicationNotice(notice) {
+    setApplicationNotice(notice);
+    window.setTimeout(() => setApplicationNotice(null), 4200);
+  }
+
+  function markMissionAsApplied(missionId, applied = true) {
+    setOpenMissions((prev) =>
+      prev.map((item) =>
+        String(item.id) === String(missionId)
+          ? { ...item, applied }
+          : item
+      )
+    );
+
+    setSelectedMission((prev) =>
+      prev && String(prev.id) === String(missionId)
+        ? { ...prev, applied }
+        : prev
+    );
+  }
+
   async function acceptInvitation(invitation) {
-  if (actionLockRef.current) return;
+    if (actionLockRef.current) return;
 
-  actionLockRef.current = true;
-  setActionLoading(true);
+    actionLockRef.current = true;
+    setActionLoading(true);
 
-  try {
-    if (!driverProfile) return;
+    try {
+      if (!driverProfile) return;
 
-    const { error: applicationError } = await supabase
-      .from("applications")
-      .insert([
+      const { error: applicationError } = await supabase.from("applications").insert([
         {
           mission_id: invitation.mission_id,
           status: "Acceptée",
@@ -376,76 +420,67 @@ companyVerified: mission.company_verified,
         },
       ]);
 
-    if (applicationError) {
-      console.error(applicationError);
-      alert("Erreur candidature");
-      return;
+      if (applicationError) {
+        console.error(applicationError);
+        alert("Erreur candidature");
+        return;
+      }
+
+      const { error: missionError } = await supabase
+        .from("missions")
+        .update({
+          status: "Pourvue",
+          color: "#16a34a",
+          driver_id: driverProfile.id,
+          driver_name: driverProfile.name,
+        })
+        .eq("id", invitation.mission_id);
+
+      if (missionError) {
+        console.error(missionError);
+        alert("Erreur passage mission en pourvue");
+        return;
+      }
+
+      const newShiftScore = Math.min(100, (driverProfile.shiftScore ?? 70) + 5);
+
+      const { error: scoreError } = await supabase
+        .from("profiles")
+        .update({ shift_score: newShiftScore })
+        .eq("id", driverProfile.id);
+
+      if (scoreError) {
+        console.error(scoreError);
+        alert("Erreur mise à jour ShiftScore");
+        return;
+      }
+
+      await supabase.from("shift_score_events").insert([
+        {
+          driver_id: driverProfile.id,
+          mission_id: invitation.mission_id,
+          event_type: "Invitation acceptée",
+          points: 5,
+        },
+      ]);
+
+      const { error: invitationError } = await supabase
+        .from("mission_invitations")
+        .update({ status: "Acceptée" })
+        .eq("id", invitation.id);
+
+      if (invitationError) {
+        console.error(invitationError);
+        alert("Erreur invitation");
+        return;
+      }
+
+      await loadDriverData();
+    } finally {
+      actionLockRef.current = false;
+      setActionLoading(false);
     }
-
-    const { error: missionError } = await supabase
-      .from("missions")
-      .update({
-        status: "Pourvue",
-        color: "#16a34a",
-        driver_id: driverProfile.id,
-        driver_name: driverProfile.name,
-      })
-      .eq("id", invitation.mission_id);
-
-    if (missionError) {
-      console.error(missionError);
-      alert("Erreur passage mission en pourvue");
-      return;
-    }
-
-    const newShiftScore = Math.min(
-  100,
-  (driverProfile.shiftScore ?? 70) + 5
-);
-
-console.log("Nouveau ShiftScore :", newShiftScore);
-
-const { error: scoreError } = await supabase
-  .from("profiles")
-  .update({
-    shift_score: newShiftScore,
-  })
-  .eq("id", driverProfile.id);
-
-if (scoreError) {
-  console.error(scoreError);
-  alert("Erreur mise à jour ShiftScore");
-  return;
-}
-
-await supabase.from("shift_score_events").insert([
-  {
-    driver_id: driverProfile.id,
-    mission_id: invitation.mission_id,
-    event_type: "Invitation acceptée",
-    points: 5,
-  },
-]);
-
-    const { error: invitationError } = await supabase
-      .from("mission_invitations")
-      .update({
-        status: "Acceptée",
-      })
-      .eq("id", invitation.id);
-
-    if (invitationError) {
-      console.error(invitationError);
-      alert("Erreur invitation");
-      return;
-    }
-
-    await loadDriverData();
-  } finally {
-    actionLockRef.current = false;
-    setActionLoading(false);
   }
-}
 
   async function refuseInvitation(invitation) {
     if (actionLockRef.current) return;
@@ -472,942 +507,1121 @@ await supabase.from("shift_score_events").insert([
     }
   }
 
-  const pendingInvitations = invitations.filter(
-    (invitation) =>
-      invitation.status !== "Acceptée" && invitation.status !== "Refusée"
-  );
-
   return (
-    <div className="dashboard">
-      <aside className="sidebar">
-        <h2>Shiftly</h2>
+    <main className="driverShell">
+      <aside className="driverSidebar">
+        <div className="driverBrand">
+          <div className="driverMark">S</div>
+          <div>
+            <strong>Shiftly</strong>
+            <span>Driver</span>
+          </div>
+        </div>
 
-        <div className="mobile-actions">
-
-  <button
-    className="notif-pill"
-    onClick={() => navigate("/notifications")}
-  >
-    <div className="notif-left">
-      <span className="notif-icon">🔔</span>
-    </div>
-
-    {notifications.filter((n) => !n.is_read).length > 0 && (
-      <div className="notif-count">
-        {
-          notifications.filter(
-            (n) => !n.is_read
-          ).length
-        }
-      </div>
-    )}
-  </button>
-
-  <button
-    className="mobile-logout"
-    onClick={logout}
-  >
-    ⇦
-  </button>
-
-</div>
-
-        <nav>
-          <button
-  className="menu-btn"
-  onClick={() => safeNavigate("/driver/missions")}
->
-  Missions
-
-  {myMissions.length > 0 && (
-    <span className="badge">
-      {myMissions.length}
-    </span>
-  )}
-</button>
-
-<button onClick={() => safeNavigate("/driver/availability")}>
-  Disponibilités
-</button>
-
-<button onClick={() => safeNavigate("/driver/profile")}>
-  Profil
-</button>
-
-          <button className="logout-btn" onClick={logout}>
-            Déconnexion
+        <nav className="driverNav">
+          <button className="active" onClick={() => safeNavigate("/driver")}>
+            <Home size={18} /> Accueil
+          </button>
+          <button onClick={() => safeNavigate("/driver/missions")}>
+            <Bus size={18} /> Missions
+            {myMissions.length > 0 && <em>{myMissions.length}</em>}
+          </button>
+          <button onClick={() => safeNavigate("/driver/availability")}>
+            <CalendarDays size={18} /> Disponibilités
+          </button>
+          <button onClick={() => safeNavigate("/driver/profile")}>
+            <User size={18} /> Profil
           </button>
         </nav>
+
+        <button className="sidebarLogout" onClick={logout}>
+          Déconnexion
+        </button>
       </aside>
 
-      <main className="content">
-       <header className="top">
-
-  <div>
-    <p>
-      Bonjour{" "}
-      {driverProfile?.name ||
-        driverProfile?.fullName ||
-        "conducteur"} 👋
-    </p>
-
-    <h1>Tableau conducteur</h1>
-  </div>
-
-  <div className="driver-top-right">
-
-    <div className="score">
-      ⭐ ShiftScore {driverProfile?.shiftScore ?? 0}
-    </div>
-
-    <button
-      className="notif-pill"
-      onClick={() => navigate("/notifications")}
-    >
-      <div className="notif-left">
-        <span className="notif-icon">🔔</span>
-      </div>
-
-      {notifications.filter((n) => !n.is_read).length > 0 && (
-        <div className="notif-count">
-          {
-            notifications.filter(
-              (n) => !n.is_read
-            ).length
-          }
-        </div>
-      )}
-    </button>
-
-  </div>
-
-</header>
-
-
-        <section className="cards">
-          <div className="card">
-            <span>Missions disponibles</span>
-            <strong>{openMissions.length}</strong>
+      <section className="driverContent">
+        <header className="driverTopbar">
+          <div>
+            <span className="eyebrow">Espace conducteur</span>
+            <h1>
+              Bonjour {driverProfile?.name || driverProfile?.fullName || "conducteur"}
+              {driverProfile?.verified && <VerifiedCheck label="Profil vérifié" />}
+            </h1>
+            <p>Suivez vos missions, invitations et disponibilités depuis votre tableau de bord.</p>
           </div>
 
-          <div className="card">
-            <span>Missions attribuées</span>
-            <strong>{myMissions.length}</strong>
+          <div className="topActions">
+            <div className="scorePill">
+              <Star size={17} fill="currentColor" />
+              ShiftScore {driverProfile?.shiftScore ?? 0}
+            </div>
+
+            <button className="notificationButton" onClick={() => navigate("/notifications")}>
+              <Bell size={20} />
+              {unreadCount > 0 && <span>{unreadCount}</span>}
+            </button>
           </div>
+        </header>
 
-          <div className="card">
-            <span>Invitations reçues</span>
-            <strong>{pendingInvitations.length}</strong>
-          </div>
+        <section className="recommendationCard">
+          <div>
+            <span className="label">Mission recommandée</span>
+            <h2>{recommendedMission?.title || "Aucune mission ouverte pour le moment"}</h2>
+            <p>
+              {recommendedMission
+                ? "Cette mission est classée selon tes disponibilités, tes permis, tes documents et ta zone préférée."
+                : "Dès qu'une mission compatible arrive, elle apparaîtra ici en priorité."}
+            </p>
 
-        </section>
-
-        <section className="calendar-section">
-          <h2>Mon agenda</h2>
-
-          <div className="calendar-card">
-            <FullCalendar
-              plugins={[dayGridPlugin, interactionPlugin]}
-              initialView="dayGridMonth"
-              locale="fr"
-              height="auto"
-              headerToolbar={{
-                left: "prev,next",
-                center: "title",
-                right: "today",
-              }}
-              buttonText={{
-                today: "Aujourd’hui",
-              }}
-              events={myMissions.map((mission) => ({
-                title: mission.title,
-                start: mission.start,
-                end: mission.end,
-                color: "#16a34a",
-                extendedProps: mission,
-              }))}
-              eventClick={(info) => {
-                setSelectedMission(info.event.extendedProps);
-              }}
-            />
-          </div>
-        </section>
-
-        {selectedMission && (
-          <div
-            className="modal-overlay"
-            onClick={() => setSelectedMission(null)}
-          >
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
-              <button className="close" onClick={() => setSelectedMission(null)}>
-                ✕
-              </button>
-
-              <h2>{selectedMission.title}</h2>
-
-              <p>📍 {selectedMission.pickup} → {selectedMission.dropoff}</p>
-              <p>📅 {new Date(selectedMission.start).toLocaleString("fr-FR")}</p>
-              <p>🔁 {new Date(selectedMission.end).toLocaleString("fr-FR")}</p>
-              <p>🚍 {selectedMission.vehicle}</p>
-              <p>👥 {selectedMission.passengers}</p>
-              <p>💶 {selectedMission.price || "Prix non renseigné"}</p>
-              <p>📝 {selectedMission.comment || "Aucune consigne particulière"}</p>
+            <div className="missionMeta">
+              <span>
+                <Clock3 size={16} />
+                {recommendedMission?.start ? formatDateTime(recommendedMission.start) : "En attente"}
+              </span>
+              <span>
+                <MapPin size={16} />
+                {recommendedMission?.pickup || "Départ à confirmer"}
+              </span>
+              <span>
+                <ShieldCheck size={16} />
+                Match {recommendedMission?.matchScore ?? 0}%
+              </span>
             </div>
           </div>
-        )}
 
-        <section className="missions">
-          <div className="section-title">
-            <h2>Invitations entreprises</h2>
-            <span>{pendingInvitations.length} invitation(s)</span>
-          </div>
-
-          <div className="mission-list">
-            {pendingInvitations.length === 0 && (
-              <div className="empty">Aucune invitation reçue.</div>
-            )}
-
-            {pendingInvitations.map((invitation) => {
-              const mission = invitation.missions;
-
-              return (
-                <div className="mission" key={invitation.id}>
-                  <div>
-                    <strong>{mission?.title || "Mission"}</strong>
-                    <p>📍 {mission?.pickup} → {mission?.dropoff}</p>
-                    <p>
-                      📅{" "}
-                      {mission?.start_time
-                        ? new Date(mission.start_time).toLocaleString("fr-FR")
-                        : "Date non renseignée"}
-                    </p>
-                    <p>💶 {mission?.price || "Non renseigné"}</p>
-                  </div>
-
-                  <div className="mission-actions">
-                    <button
-                      disabled={actionLoading}
-                      onClick={() => acceptInvitation(invitation)}
-                    >
-                      {actionLoading ? "Chargement..." : "Accepter"}
-                    </button>
-
-                    <button
-                      disabled={actionLoading}
-                      className="refuse-btn"
-                      onClick={() => refuseInvitation(invitation)}
-                    >
-                      {actionLoading ? "Chargement..." : "Refuser"}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="priceBox">
+            <small>Rémunération</small>
+            <strong>{formatPrice(recommendedMission?.price)}</strong>
+            <button
+              disabled={!recommendedMission || recommendedMission.applied || actionLoading}
+              onClick={() => recommendedMission && applyToMission(recommendedMission)}
+            >
+              {recommendedMission?.applied
+                ? "Candidature envoyée"
+                : applyingMissionId === recommendedMission?.id
+                  ? "Envoi..."
+                  : "Postuler"}
+              <ChevronRight size={18} />
+            </button>
           </div>
         </section>
 
-        <section className="missions">
-          <div className="section-title">
-            <h2>Missions ouvertes</h2>
-            <span>{openMissions.length} disponibles</span>
+        <section className="driverStats">
+          <Stat value={openMissions.length} label="Missions proposées" />
+          <Stat value={pendingInvitations.length} label="Invitations reçues" />
+          <Stat value={myMissions.length} label="Missions attribuées" />
+          <Stat value={`${driverProfile?.shiftScore ?? 0}`} label="ShiftScore" />
+        </section>
+
+        <section className="dashboardGrid">
+          <div className="panel">
+            <div className="panelTitle">
+              <div>
+                <h3>Invitations entreprises</h3>
+                <span>{pendingInvitations.length} invitation(s)</span>
+              </div>
+            </div>
+
+            <div className="missionList">
+              {pendingInvitations.length === 0 && <div className="emptyState">Aucune invitation reçue.</div>}
+              {pendingInvitations.slice(0, 3).map((invitation) => (
+                <InvitationCard
+                  key={invitation.id}
+                  invitation={invitation}
+                  loading={actionLoading}
+                  onAccept={acceptInvitation}
+                  onRefuse={refuseInvitation}
+                />
+              ))}
+            </div>
           </div>
 
-          <div className="mission-list">
-            {openMissions.length === 0 && (
-              <div className="empty">Aucune mission ouverte pour le moment.</div>
-            )}
-
-            {openMissions.map((mission) => (
-              <div className="mission" key={mission.id}>
-                <div>
-                  
-                  <p className="company-name">
-  {mission.companyName}
-</p>
-
-{mission.companyVerified && (
-  <div className="verified-company">
-    ✅ Entreprise vérifiée
-  </div>
-)}
-
-<div className="mission-title">
-  {mission.title}
-</div>
-                  <p>📍 {mission.pickup} → {mission.dropoff}</p>
-                  <p>📅 Départ : {new Date(mission.start).toLocaleString("fr-FR")}</p>
-                  <p>🔁 Retour : {new Date(mission.end).toLocaleString("fr-FR")}</p>
-                  <p>🚍 {mission.vehicle} · 👥 {mission.passengers}</p>
-                  <p>💶 {mission.price || "Prix non renseigné"}</p>
-                  <p>📝 {mission.comment || "Aucune consigne particulière"}</p>
-                 
-                </div>
-
-                <div className="mission-actions">
-                  <button
-                    className={
-                      mission.matchScore >= 75
-                        ? "match-btn excellent"
-                        : mission.matchScore >= 45
-                        ? "match-btn good"
-                        : "match-btn weak"
-                    }
-                    disabled
-                  >
-                    {mission.matchScore >= 75
-                      ? "Excellent match"
-                      : mission.matchScore >= 45
-                      ? "Compatible"
-                      : "Faible match"}{" "}
-                    {mission.matchScore}%
-                  </button>
-
-                  {mission.applied ? (
-  <button className="applied-btn" disabled>
-    ✓ Candidature envoyée
-  </button>
-) : (
-  <>
-    <button
-      disabled={actionLoading}
-      onClick={() => applyToMission(mission)}
-    >
-      {actionLoading ? "Chargement..." : "Postuler"}
-    </button>
-  </>
-)}
-                </div>
+          <div className="panel sidePanel">
+            <div className="panelTitle">
+              <div>
+                <h3>Mon planning</h3>
+                <span>Cette semaine</span>
               </div>
+            </div>
+
+            <div className="calendarMini">
+              {weekDays.map((day) => (
+                <Day key={`${day.day}-${day.date}`} {...day} />
+              ))}
+            </div>
+
+            <div className="nextCard">
+              <small>Prochaine mission</small>
+              <strong>{myMissions[0]?.title || "Aucune mission planifiée"}</strong>
+              <span>{myMissions[0]?.start ? formatDateTime(myMissions[0].start) : "Ton agenda est libre"}</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel openPanel">
+          <div className="panelTitle">
+            <div>
+              <h3>Missions ouvertes</h3>
+              <span>Triées par compatibilité</span>
+            </div>
+            <button onClick={() => safeNavigate("/driver/open-missions")}>Voir tout</button>
+          </div>
+
+          <div className="missionList">
+            {openMissions.length === 0 && <div className="emptyState">Aucune mission ouverte pour le moment.</div>}
+            {openMissions.slice(0, 5).map((mission) => (
+              <MissionCard
+                key={mission.id}
+                mission={mission}
+                loading={actionLoading}
+                applyingMissionId={applyingMissionId}
+                onApply={applyToMission}
+                onOpen={setSelectedMission}
+              />
             ))}
           </div>
         </section>
-      </main>
+      </section>
+
+      {selectedMission && (
+        <div className="modalOverlay" onClick={() => setSelectedMission(null)}>
+          <div className="missionModal" onClick={(event) => event.stopPropagation()}>
+            <button className="closeModal" onClick={() => setSelectedMission(null)}>
+              ×
+            </button>
+            <h2>{selectedMission.title}</h2>
+            <p>{selectedMission.pickup} → {selectedMission.dropoff}</p>
+            <p>Départ : {formatDateTime(selectedMission.start)}</p>
+            <p>Retour : {formatDateTime(selectedMission.end)}</p>
+            <p>Véhicule : {selectedMission.vehicle || "Non renseigné"}</p>
+            <p>Passagers : {selectedMission.passengers || "Non renseigné"}</p>
+            <p>Prix : {formatPrice(selectedMission.price)}</p>
+            <p>{selectedMission.comment || "Aucune consigne particulière"}</p>
+          </div>
+        </div>
+      )}
+
+      {applicationNotice && (
+        <div className={`applicationNotice ${applicationNotice.type}`}>
+          <strong>{applicationNotice.title}</strong>
+          <span>{applicationNotice.message}</span>
+          <button onClick={() => setApplicationNotice(null)}>OK</button>
+        </div>
+      )}
 
       <style>{`
-        .dashboard {
+        .driverShell {
           min-height: 100svh;
-          display: flex;
-          color: white;
-          font-family: Inter, Arial, sans-serif;
-          background:
-            radial-gradient(circle at top left, rgba(251,191,36,0.1), transparent 34%),
-            radial-gradient(circle at bottom right, rgba(56,189,248,0.1), transparent 34%),
-            linear-gradient(135deg, #0f172a 0%, #162033 52%, #1f2937 100%);
+          display: grid;
+          grid-template-columns: 260px 1fr;
+          background: #f8fafc;
+          color: #0f172a;
+          font-family: Inter, system-ui, Arial, sans-serif;
         }
 
-        button:disabled {
-          opacity: 0.6;
+        .driverShell button {
+          border: 0;
+          font: inherit;
+          cursor: pointer;
+        }
+
+        .driverShell button:disabled {
+          opacity: 0.62;
           cursor: not-allowed;
-          pointer-events: none;
         }
 
-        .menu-btn {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.notif-btn {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.mobile-actions {
-  display: none;
-}
-
-.company-name {
-  color: #cbd5e1;
-  font-size: 13px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.verified-company {
-  display: inline-flex;
-  margin-top: 8px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(22,163,74,.15);
-  color: #86efac;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.mission-title {
-  margin-top: 14px;
-  font-size: 20px;
-  font-weight: 900;
-  color: white;
-}
-
-.sidebar {
-  position: relative;
-}
-
-.mobile-logout {
-  display: none;
-
-  width: 42px;
-  height: 42px;
-
-  border-radius: 999px;
-
-  border:
-    1px solid rgba(248,113,113,0.25);
-
-  background:
-    rgba(127,29,29,0.25);
-
-  color: #f87171;
-
-  align-items: center;
-  justify-content: center;
-
-  font-size: 20px;
-  font-weight: 900;
-
-  cursor: pointer;
-}
-
-.notif-badge {
-  min-width: 26px;
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: rgba(239,68,68,0.18);
-  color: #fca5a5;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.badge {
-  min-width: 24px;
-  height: 24px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: #16a34a;
-  color: white;
-  font-size: 12px;
-  font-weight: 900;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-        .sidebar {
-          width: 260px;
-          padding: 32px;
-          background: rgba(255,255,255,0.05);
-          border-right: 1px solid rgba(255,255,255,0.08);
-          flex-shrink: 0;
-        }
-
-.notif-pill {
-  display: inline-flex;
-
-  align-items: center;
-  justify-content: space-between;
-
-  gap: 12px;
-
-  padding: 10px 14px;
-
-  border: 1px solid rgba(255,255,255,0.08);
-
-  border-radius: 999px;
-
-  background:
-    rgba(255,255,255,0.05);
-
-  color: white;
-
-  cursor: pointer;
-
-  transition: 0.2s;
-}
-
-.notif-pill:hover {
-  background:
-    rgba(255,255,255,0.08);
-}
-
-.notif-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-
-  font-weight: 700;
-  font-size: 14px;
-}
-
-.driver-top-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.notif-icon {
-  font-size: 15px;
-}
-
-.notif-count {
-  min-width: 22px;
-  height: 22px;
-
-  padding: 0 6px;
-
-  border-radius: 999px;
-
-  background:
-    rgba(239,68,68,0.18);
-
-  color: #fca5a5;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  font-size: 11px;
-  font-weight: 900;
-}
-
-        .sidebar h2 {
-          margin: 0;
-          font-size: 28px;
-          font-weight: 950;
-        }
-
-        nav {
+        .driverSidebar {
+          min-height: 100svh;
+          padding: 28px;
+          background: #07152f;
+          color: white;
           display: flex;
           flex-direction: column;
-          gap: 12px;
-          margin-top: 40px;
         }
 
-        nav button {
+        .driverBrand {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 42px;
+        }
+
+        .driverMark {
+          width: 48px;
+          height: 48px;
+          display: grid;
+          place-items: center;
+          border-radius: 14px;
+          background: #2563eb;
+          font-size: 30px;
+          font-weight: 950;
+          font-style: italic;
+        }
+
+        .driverBrand strong {
+          display: block;
+          font-size: 28px;
+          font-style: italic;
+          letter-spacing: -0.07em;
+          line-height: .9;
+        }
+
+        .driverBrand span {
+          display: inline-flex;
+          margin-top: 7px;
+          padding: 4px 8px;
+          border-radius: 7px;
+          background: #2563eb;
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: .1em;
+          text-transform: uppercase;
+        }
+
+        .driverNav {
+          display: grid;
+          gap: 8px;
+        }
+
+        .driverNav button,
+        .sidebarLogout {
+          display: flex;
+          align-items: center;
+          gap: 11px;
+          min-height: 46px;
+          padding: 12px 14px;
+          border-radius: 13px;
           background: transparent;
           color: #cbd5e1;
-          border: 1px solid rgba(255,255,255,0.08);
-          padding: 14px;
-          border-radius: 14px;
+          font-weight: 780;
           text-align: left;
-          cursor: pointer;
-          font-weight: 700;
         }
 
-        nav .active {
-          background: linear-gradient(180deg, #2563eb, #1d4ed8);
+        .driverNav button.active,
+        .driverNav button:hover {
+          background: #2563eb;
           color: white;
-          border: none;
         }
 
-        .logout-btn {
-          background: linear-gradient(180deg, #dc2626, #991b1b) !important;
-          color: white !important;
-          border: none !important;
-        }
-
-        .content {
-          flex: 1;
-          padding: 40px;
-          min-width: 0;
-          overflow-y: auto;
-          height: 100svh;
-        }
-
-        .top {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 20px;
-          padding: 18px 0 26px;
-        }
-
-        .top p {
-          color: #94a3b8;
-          margin: 0;
-        }
-
-        .top h1 {
-          margin: 8px 0 0;
-          font-size: 42px;
+        .driverNav em {
+          min-width: 24px;
+          height: 24px;
+          margin-left: auto;
+          display: grid;
+          place-items: center;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.15);
+          color: white;
+          font-size: 12px;
+          font-style: normal;
           font-weight: 950;
+        }
+
+        .sidebarLogout {
+          margin-top: auto;
+          width: 100%;
+          color: #fecaca;
+          background: rgba(239, 68, 68, 0.1);
+        }
+
+        .driverContent {
+          padding: 30px;
+          overflow: auto;
+        }
+
+        .driverTopbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 24px;
+          margin-bottom: 24px;
+        }
+
+        .eyebrow {
+          display: inline-flex;
+          margin-bottom: 10px;
+          padding: 7px 11px;
+          border-radius: 999px;
+          background: #dbeafe;
+          color: #2563eb;
+          font-size: 12px;
+          font-weight: 950;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .driverTopbar h1 {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin: 0;
+          font-size: clamp(24px, 3vw, 34px);
+          line-height: 1.08;
           letter-spacing: -0.05em;
         }
 
-        .score {
-          background: rgba(37,99,235,0.18);
-          color: #bfdbfe;
-          padding: 12px 18px;
+        .driverTopbar p {
+          margin: 10px 0 0;
+          color: #64748b;
+          line-height: 1.6;
+        }
+
+        .verifiedCheck {
+          width: 20px;
+          height: 20px;
+          display: inline-grid;
+          place-items: center;
           border-radius: 999px;
-          font-weight: 800;
-          white-space: nowrap;
+          background: #22c55e;
+          color: white;
+          box-shadow: 0 7px 15px rgba(34, 197, 94, 0.22);
         }
 
-        .cards {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
-  margin-top: 40px;
-}
-
-        .card {
-          background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 24px;
-          padding: 24px;
-          box-shadow: 0 18px 45px rgba(0,0,0,0.22);
+        .topActions {
+          display: flex;
+          align-items: center;
+          gap: 12px;
         }
 
-        .card span {
-          display: block;
-          color: #94a3b8;
-          margin-bottom: 10px;
+        .scorePill,
+        .notificationButton {
+          min-height: 44px;
+          border-radius: 999px;
+          background: white;
+          border: 1px solid #dbe3ee !important;
+          color: #0f172a;
+          font-weight: 850;
+          box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
         }
 
-        .card strong {
-          display: block;
-          font-size: 38px;
+        .scorePill {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 0 16px;
+          color: #2563eb;
+        }
+
+        .notificationButton {
+          position: relative;
+          width: 44px;
+          display: grid;
+          place-items: center;
+        }
+
+        .notificationButton span {
+          position: absolute;
+          top: -5px;
+          right: -5px;
+          width: 21px;
+          height: 21px;
+          display: grid;
+          place-items: center;
+          border-radius: 999px;
+          background: #ef4444;
+          color: white;
+          font-size: 11px;
           font-weight: 950;
         }
 
-        .calendar-section,
-        .missions {
-          margin-top: 40px;
-        }
-
-        .calendar-section h2,
-        .missions h2 {
-          font-size: 28px;
-          margin-bottom: 22px;
-        }
-
-        .calendar-card {
-          background: #f8fafc;
-          color: #0f172a;
+        .recommendationCard {
+          display: grid;
+          grid-template-columns: 1fr 230px;
+          gap: 24px;
+          padding: 28px;
           border-radius: 28px;
-          padding: 22px;
-          box-shadow: 0 30px 80px rgba(0,0,0,0.28);
-          overflow: hidden;
+          background:
+            linear-gradient(135deg, rgba(37, 99, 235, .18), transparent 55%),
+            #0f172a;
+          color: white;
+          box-shadow: 0 24px 70px rgba(15, 23, 42, .16);
         }
 
-        .fc {
-          font-family: Inter, Arial, sans-serif;
-        }
-
-        .fc .fc-toolbar-title {
-          font-size: 24px;
-          font-weight: 900;
-          color: #0f172a;
-        }
-
-        .fc .fc-button {
-          background: #0f172a !important;
-          border: none !important;
-          border-radius: 999px !important;
-          padding: 10px 16px !important;
-          font-weight: 800 !important;
-        }
-
-        .fc .fc-daygrid-day-number,
-        .fc .fc-col-header-cell-cushion {
-          text-decoration: none;
-          color: #334155;
-          font-weight: 800;
-        }
-
-        .fc .fc-day-today {
-          background: rgba(37,99,235,0.08) !important;
-        }
-
-        .fc .fc-event {
-          border: none !important;
-          border-radius: 999px !important;
-          padding: 4px 8px !important;
-          font-size: 12px !important;
-          font-weight: 800 !important;
-        }
-
-        .section-title {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 22px;
-        }
-
-        .section-title h2 {
-          margin: 0;
-        }
-
-        .section-title span {
-          color: #94a3b8;
-        }
-
-        .mission {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 18px;
-          background: rgba(255,255,255,0.07);
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 20px;
-          padding: 20px;
-          margin-bottom: 14px;
-        }
-
-        .mission p {
-          color: #94a3b8;
-          margin: 6px 0 0;
-        }
-
-        .mission-actions {
-          display: flex;
-          flex-direction: row;
-          gap: 10px;
-          align-items: center;
-          min-width: 190px;
-        }
-
-        .mission button,
-        .applied-btn,
-        .match-btn {
-          min-width: 190px;
-          padding: 12px 18px;
+        .label {
+          display: inline-flex;
+          padding: 7px 11px;
           border-radius: 999px;
-          border: none;
-          color: white;
+          background: rgba(37, 99, 235, .28);
+          color: #bfdbfe;
+          font-size: 12px;
+          font-weight: 950;
+          text-transform: uppercase;
+          letter-spacing: .08em;
+        }
+
+        .recommendationCard h2 {
+          margin: 16px 0 10px;
+          font-size: clamp(28px, 4vw, 40px);
+          letter-spacing: -0.06em;
+        }
+
+        .recommendationCard p {
+          max-width: 640px;
+          color: #cbd5e1;
+          line-height: 1.6;
+        }
+
+        .missionMeta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 20px;
+        }
+
+        .missionMeta span {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 9px 12px;
+          border-radius: 999px;
+          background: rgba(255,255,255,.08);
+          color: #dbeafe;
+          font-size: 13px;
           font-weight: 800;
         }
 
-        .mission button {
-          background: linear-gradient(180deg, #2563eb, #1d4ed8);
-          cursor: pointer;
+        .priceBox {
+          padding: 20px;
+          border-radius: 22px;
+          background: white;
+          color: #0f172a;
+          align-self: stretch;
         }
 
-        .applied-btn {
-          background: linear-gradient(180deg, #16a34a, #15803d);
-          cursor: default;
+        .priceBox small {
+          color: #64748b;
+          font-weight: 800;
         }
 
-        .refuse-btn {
-          background: linear-gradient(180deg, #dc2626, #991b1b) !important;
+        .priceBox strong {
+          display: block;
+          margin: 6px 0 24px;
+          font-size: 36px;
+          letter-spacing: -0.06em;
+        }
+
+        .priceBox button {
+          width: 100%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          border-radius: 14px;
+          padding: 13px;
+          background: #2563eb;
+          color: white;
+          font-weight: 950;
+        }
+
+        .driverStats {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 14px;
+          margin: 18px 0;
+        }
+
+        .stat,
+        .panel {
+          background: white;
+          border: 1px solid #dbe3ee;
+          box-shadow: 0 16px 48px rgba(15, 23, 42, .06);
+        }
+
+        .stat {
+          padding: 20px;
+          border-radius: 22px;
+        }
+
+        .stat strong {
+          display: block;
+          font-size: 30px;
+          letter-spacing: -0.05em;
+        }
+
+        .stat span {
+          color: #64748b;
+          font-size: 13px;
+          font-weight: 750;
+        }
+
+        .dashboardGrid {
+          display: grid;
+          grid-template-columns: 1.35fr .65fr;
+          gap: 18px;
+          margin-bottom: 18px;
+        }
+
+        .panel {
+          border-radius: 26px;
+          padding: 22px;
+        }
+
+        .panelTitle {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 18px;
+        }
+
+        .panelTitle h3 {
+          margin: 0;
+          font-size: 24px;
+          letter-spacing: -0.04em;
+        }
+
+        .panelTitle span {
+          color: #64748b;
+          font-size: 13px;
+          font-weight: 750;
+        }
+
+        .panelTitle button {
+          border-radius: 999px;
+          padding: 10px 14px;
+          background: #dbeafe;
+          color: #2563eb;
+          font-weight: 900;
+        }
+
+        .missionList {
+          display: grid;
+          gap: 11px;
+        }
+
+        .missionRow,
+        .inviteRow {
+          display: grid;
+          grid-template-columns: 46px 1fr auto;
+          align-items: center;
+          gap: 14px;
+          padding: 15px;
+          border-radius: 18px;
+          background: #f8fafc;
+          border: 1px solid #e5eaf2;
+        }
+
+        .missionBody,
+        .inviteRow > div:nth-child(2) {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+        }
+
+        .missionRight {
+          min-width: 210px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 14px;
+          align-self: center;
+        }
+
+        .missionIcon {
+          width: 46px;
+          height: 46px;
+          display: grid;
+          place-items: center;
+          border-radius: 14px;
+          background: #dbeafe;
+          color: #2563eb;
+        }
+
+        .missionRow strong,
+        .inviteRow strong {
+          display: block;
+          margin-bottom: 4px;
+        }
+
+        .missionRow span,
+        .inviteRow span {
+          color: #64748b;
+          font-size: 13px;
+        }
+
+        .missionCompany {
+          width: fit-content;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 5px;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 800;
+        }
+
+        .verifiedCompanyBadge {
+          width: fit-content;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          min-height: 24px;
+          margin-bottom: 7px;
+          padding: 0 9px;
+          border-radius: 999px;
+          background: #dcfce7;
+          color: #166534;
+          font-size: 12px;
+          font-weight: 950;
+        }
+
+        .appliedBadge {
+          width: fit-content;
+          display: inline-flex;
+          align-items: center;
+          min-height: 26px;
+          margin-top: 9px;
+          padding: 0 10px;
+          border-radius: 999px;
+          background: #dcfce7;
+          color: #166534;
+          font-size: 12px;
+          font-weight: 950;
+        }
+
+        .matchBox {
+          min-width: 110px;
+          align-self: center;
+          text-align: center;
+        }
+
+        .matchBox strong {
+          color: #2563eb;
+          font-size: 18px;
+        }
+
+        .missionActions,
+        .inviteActions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          justify-content: center;
+        }
+
+        .inviteActions {
+          margin-top: 10px;
+        }
+
+        .missionActions button,
+        .inviteActions button {
+          border-radius: 999px;
+          padding: 10px 13px;
+          background: #2563eb;
+          color: white;
+          font-weight: 900;
+          font-size: 13px;
+        }
+
+        .missionActions .softButton {
+          background: white;
+          color: #0f172a;
+          border: 1px solid #dbe3ee;
+        }
+
+        .inviteActions .refuseButton {
+          background: #fee2e2;
+          color: #b91c1c;
+        }
+
+        .calendarMini {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 9px;
+        }
+
+        .day {
+          padding: 13px 8px;
+          border-radius: 16px;
+          background: #f8fafc;
+          border: 1px solid #e5eaf2;
+          text-align: center;
+        }
+
+        .day span {
+          display: block;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 800;
+          text-transform: capitalize;
+        }
+
+        .day strong {
+          display: block;
+          margin-top: 4px;
+          font-size: 20px;
+        }
+
+        .day.active {
+          background: #2563eb;
+          color: white;
+          border-color: #2563eb;
+        }
+
+        .day.active span {
+          color: #dbeafe;
+        }
+
+        .day.booked {
+          background: #dbeafe;
+          border-color: #bfdbfe;
+        }
+
+        .nextCard {
+          margin-top: 18px;
+          padding: 18px;
+          border-radius: 20px;
+          background: #0f172a;
           color: white;
         }
 
-        .match-btn {
-          font-weight: 900;
-          cursor: default;
+        .nextCard small {
+          color: #93c5fd;
+          font-weight: 850;
         }
 
-        .match-btn.excellent {
-          background: linear-gradient(180deg, #16a34a, #15803d);
+        .nextCard strong {
+          display: block;
+          margin: 8px 0 5px;
+          font-size: 20px;
         }
 
-        .match-btn.good {
-          background: linear-gradient(180deg, #2563eb, #1d4ed8);
-        }
-
-        .match-btn.weak {
-          background: linear-gradient(180deg, #f97316, #c2410c);
-        }
-
-        .empty {
-          background: rgba(255,255,255,0.07);
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 20px;
-          padding: 20px;
+        .nextCard span {
           color: #cbd5e1;
+          font-size: 13px;
         }
 
-        .modal-overlay {
+        .emptyState {
+          padding: 18px;
+          border-radius: 18px;
+          background: #f8fafc;
+          border: 1px dashed #cbd5e1;
+          color: #64748b;
+          font-weight: 750;
+        }
+
+        .modalOverlay {
           position: fixed;
           inset: 0;
-          background: rgba(2,6,23,0.72);
+          z-index: 50;
+          display: grid;
+          place-items: center;
+          padding: 20px;
+          background: rgba(15, 23, 42, 0.62);
           backdrop-filter: blur(8px);
-          display: flex;
-          justify-content: center;
-          align-items: flex-start;
-          z-index: 999;
-          padding: 24px 20px;
-          overflow-y: auto;
         }
 
-        .modal {
-          width: 100%;
-          max-width: 620px;
-          max-height: calc(100svh - 48px);
-          overflow-y: auto;
-          background: linear-gradient(180deg, #111827, #0f172a);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 28px;
+        .missionModal {
+          position: relative;
+          width: min(560px, 100%);
+          border-radius: 26px;
+          background: white;
+          color: #0f172a;
           padding: 28px;
-          color: white;
-          box-shadow: 0 40px 120px rgba(0,0,0,0.45);
+          box-shadow: 0 28px 90px rgba(15, 23, 42, 0.28);
         }
 
-        .close {
-          float: right;
-          width: 42px;
-          height: 42px;
+        .missionModal h2 {
+          margin: 0 0 16px;
+          font-size: 30px;
+          letter-spacing: -0.05em;
+        }
+
+        .missionModal p {
+          color: #475569;
+          line-height: 1.5;
+        }
+
+        .closeModal {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+          width: 38px;
+          height: 38px;
           border-radius: 999px;
-          border: none;
-          background: rgba(255,255,255,0.08);
-          color: white;
-          cursor: pointer;
+          background: #f1f5f9;
+          color: #0f172a;
+          font-size: 24px;
         }
 
-        @media (max-width: 900px) {
-          .dashboard {
-            display: block;
-            overflow-x: hidden;
+        .applicationNotice {
+          position: fixed;
+          right: 22px;
+          bottom: 22px;
+          z-index: 70;
+          width: min(390px, calc(100vw - 32px));
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 5px 14px;
+          padding: 18px;
+          border-radius: 20px;
+          background: white;
+          color: #0f172a;
+          border: 1px solid #dbe3ee;
+          box-shadow: 0 20px 55px rgba(15, 23, 42, 0.18);
+        }
+
+        .applicationNotice.success {
+          border-color: #bbf7d0;
+        }
+
+        .applicationNotice.info {
+          border-color: #bfdbfe;
+        }
+
+        .applicationNotice strong {
+          display: block;
+          font-size: 15px;
+          font-weight: 950;
+        }
+
+        .applicationNotice span {
+          grid-column: 1 / -1;
+          color: #64748b;
+          font-size: 13px;
+          line-height: 1.45;
+        }
+
+        .applicationNotice button {
+          grid-row: 1;
+          grid-column: 2;
+          width: 38px;
+          height: 32px;
+          border-radius: 999px;
+          background: #2563eb;
+          color: white;
+          font-size: 12px;
+          font-weight: 950;
+        }
+
+        @media (max-width: 1040px) {
+          .driverShell {
+            grid-template-columns: 1fr;
           }
-            
 
-          .mobile-actions {
-  display: flex;
-
-  position: absolute;
-
-  top: 14px;
-  right: 14px;
-
-  gap: 10px;
-
-  align-items: center;
-}
-
-.mobile-actions .mobile-logout {
-  display: flex !important;
-  position: relative;
-}
-
-.mobile-actions .notif-pill {
-  padding: 8px 10px;
-}
-
-.driver-top-right .notif-pill {
-  display: none;
-}
-
-.logout-btn {
-  display: none;
-}
-
-          .sidebar {
-            width: 100%;
-            padding: 20px 16px;
-            border-right: none;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
+          .driverSidebar {
+            min-height: auto;
+            padding: 18px;
           }
 
-          nav {
-            margin-top: 18px;
+          .driverBrand {
+            margin-bottom: 18px;
+          }
+
+          .driverNav {
             display: flex;
-            flex-direction: row;
             overflow-x: auto;
-            gap: 10px;
-            padding-bottom: 14px;
-            scrollbar-width: none;
+            padding-bottom: 8px;
           }
 
-          nav::-webkit-scrollbar {
+          .driverNav button {
+            white-space: nowrap;
+          }
+
+          .sidebarLogout {
             display: none;
           }
 
-          nav button {
-            white-space: nowrap;
-            padding: 12px 14px;
-            font-size: 13px;
+          .dashboardGrid,
+          .recommendationCard {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 680px) {
+          .driverContent {
+            padding: 18px;
           }
 
-          .content {
-            padding: 24px 16px 40px;
-            overflow-y: auto;
-            height: auto;
-          }
-
-          .top {
-            flex-direction: column;
+          .driverTopbar,
+          .panelTitle {
             align-items: flex-start;
-          }
-
-          .top h1 {
-            font-size: 34px;
-            line-height: 1;
-          }
-
-          .score {
-            width: 100%;
-            text-align: center;
-          }
-
-          .cards {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 14px;
-            margin-top: 28px;
-          }
-
-          .calendar-card {
-            padding: 10px;
-            border-radius: 18px;
-          }
-
-          .fc {
-            font-size: 11px;
-          }
-
-          .fc .fc-toolbar {
             flex-direction: column;
-            gap: 8px;
           }
 
-          .fc .fc-toolbar-title {
-            font-size: 19px;
-          }
-
-          .fc .fc-button {
-            padding: 7px 10px !important;
-            font-size: 11px !important;
-          }
-
-          .fc .fc-event {
-            font-size: 9px !important;
-            padding: 2px 4px !important;
-            white-space: normal !important;
-            line-height: 1.2;
-          }
-
-          .section-title {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 8px;
-          }
-
-          .mission {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-
-          .mission-actions {
+          .topActions {
             width: 100%;
-            flex-direction: row;
           }
 
-          .mission button,
-          .applied-btn,
-          .match-btn {
-            width: 100%;
+          .scorePill {
+            flex: 1;
+          }
+
+          .driverStats,
+          .missionRow,
+          .inviteRow {
+            grid-template-columns: 1fr;
+          }
+
+          .matchBox {
+            text-align: left;
+          }
+
+          .calendarMini {
+            grid-template-columns: repeat(5, minmax(54px, 1fr));
+            overflow-x: auto;
+          }
+
+          .missionRight,
+          .missionActions,
+          .inviteActions {
+            justify-content: flex-start;
+            flex-wrap: wrap;
+          }
+
+          .missionRight {
             min-width: 0;
+            align-items: flex-start;
           }
         }
       `}</style>
+    </main>
+  );
+}
+
+function Stat({ value, label }) {
+  return (
+    <div className="stat">
+      <strong>{value}</strong>
+      <span>{label}</span>
     </div>
   );
+}
+
+function VerifiedCheck({ label = "Vérifié" }) {
+  return (
+    <span className="verifiedCheck" title={label} aria-label={label}>
+      <BadgeCheck size={14} />
+    </span>
+  );
+}
+
+function MissionCard({ mission, loading, applyingMissionId, onApply, onOpen }) {
+  const isApplying = String(applyingMissionId) === String(mission.id);
+
+  return (
+    <div className="missionRow">
+      <div className="missionIcon">
+        <Bus size={22} />
+      </div>
+
+      <div className="missionBody">
+        {mission.companyName && <small className="missionCompany">{mission.companyName}</small>}
+        {mission.companyVerified && (
+          <em className="verifiedCompanyBadge">
+            <BadgeCheck size={14} />
+            Entreprise vérifiée
+          </em>
+        )}
+        <strong>{mission.title}</strong>
+        <span>{mission.pickup} → {mission.dropoff}</span>
+        <span>{mission.start ? ` · ${formatDateTime(mission.start)}` : ""}</span>
+        {mission.applied && <em className="appliedBadge">Déjà postulé</em>}
+      </div>
+
+      <div className="missionRight">
+        <div className="matchBox">
+          <strong>{mission.matchScore}%</strong>
+          <span>match</span>
+        </div>
+
+        <div className="missionActions">
+          <button className="softButton" onClick={() => onOpen(mission)}>
+            Détails
+          </button>
+          <button disabled={loading || mission.applied} onClick={() => onApply(mission)}>
+            {mission.applied ? "Candidature envoyée" : isApplying ? "Envoi..." : "Postuler"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvitationCard({ invitation, loading, onAccept, onRefuse }) {
+  const mission = invitation.missions;
+
+  return (
+    <div className="inviteRow">
+      <div className="missionIcon">
+        <ShieldCheck size={22} />
+      </div>
+
+      <div>
+        <strong>{mission?.title || "Mission"}</strong>
+        <span>{mission?.pickup || "Départ"} → {mission?.dropoff || "Arrivée"}</span>
+        <span>{mission?.start_time ? ` · ${formatDateTime(mission.start_time)}` : ""}</span>
+
+        <div className="inviteActions">
+          <button disabled={loading} onClick={() => onAccept(invitation)}>
+            Accepter
+          </button>
+          <button className="refuseButton" disabled={loading} onClick={() => onRefuse(invitation)}>
+            Refuser
+          </button>
+        </div>
+      </div>
+
+      <div className="matchBox">
+        <strong>{formatPrice(mission?.price)}</strong>
+        <span>proposé</span>
+      </div>
+    </div>
+  );
+}
+
+function Day({ day, date, active, booked }) {
+  return (
+    <div className={`day ${active ? "active" : ""} ${booked ? "booked" : ""}`}>
+      <span>{day}</span>
+      <strong>{date}</strong>
+    </div>
+  );
+}
+
+function formatDateTime(value) {
+  if (!value) return "Date non renseignée";
+
+  return new Date(value).toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatPrice(value) {
+  if (value === null || value === undefined || value === "") return "À définir";
+
+  const numericValue = Number(String(value).replace(",", ".").replace(/[^\d.]/g, ""));
+
+  if (Number.isFinite(numericValue)) {
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      maximumFractionDigits: numericValue % 1 === 0 ? 0 : 2,
+    }).format(numericValue);
+  }
+
+  return String(value).includes("€") ? String(value) : `${value} €`;
+}
+
+function isDriverProfileVerified(profile) {
+  if (!profile) return false;
+
+  if (
+    profile.driver_verified ||
+    profile.profile_verified ||
+    profile.is_verified ||
+    profile.verified
+  ) {
+    return true;
+  }
+
+  const permits = Array.isArray(profile.permits) ? profile.permits : [];
+  const hasPermit = permits.length > 0;
+  const fcoReady = String(profile.fco_status || "").toLowerCase().includes("jour");
+
+  return Boolean(profile.full_name) && hasPermit && fcoReady;
 }

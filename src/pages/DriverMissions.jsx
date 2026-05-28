@@ -1,7 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Archive,
+  Bus,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  MapPin,
+  MessageCircle,
+  ShieldCheck,
+  Wallet,
+  X,
+} from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser } from "../lib/auth";
+
+const tabs = [
+  { id: "en-cours", label: "En cours" },
+  { id: "candidatures", label: "Candidatures" },
+  { id: "refusees", label: "Refusées" },
+  { id: "archivees", label: "Archivées" },
+];
+
+const acceptedStatuses = ["Acceptée", "AcceptÃ©e"];
+const refusedStatuses = ["Refusée", "RefusÃ©e"];
+const completedStatuses = ["Terminée", "TerminÃ©e"];
 
 export default function DriverMissions() {
   const navigate = useNavigate();
@@ -13,973 +38,1018 @@ export default function DriverMissions() {
   const [pageLocked, setPageLocked] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reportMissionTarget, setReportMissionTarget] = useState(null);
-const [popup, setPopup] = useState(null);
+  const [popup, setPopup] = useState(null);
 
   useEffect(() => {
     loadMissions();
   }, []);
 
+  const counts = useMemo(
+    () => ({
+      current: missions.filter((item) => isCurrent(item)).length,
+      pending: missions.filter((item) => item.status === "En attente").length,
+      refused: missions.filter((item) => refusedStatuses.includes(item.status)).length,
+      archived: missions.filter((item) => isArchived(item)).length,
+    }),
+    [missions]
+  );
+
   async function loadMissions() {
-  setLoading(true);
+    setLoading(true);
 
-  const user = await getCurrentUser();
+    const user = await getCurrentUser();
 
-  if (!user) {
-    console.warn("Session absente temporairement");
-    setLoading(false);
-    return;
-  }
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-  const { data: applicationsData, error: applicationsError } =
-    await supabase
+    const { data: applicationsData, error: applicationsError } = await supabase
       .from("applications")
       .select(`
         *,
         missions (*)
       `)
       .eq("driver_id", user.id)
-      .order("created_at", {
-        ascending: false,
-      });
+      .order("created_at", { ascending: false });
 
-  if (applicationsError) {
-    console.error(applicationsError);
-    setLoading(false);
-    return;
-  }
+    if (applicationsError) {
+      console.error(applicationsError);
+      setLoading(false);
+      return;
+    }
 
-  const { data: invitationsData, error: invitationsError } =
-    await supabase
+    const { data: invitationsData, error: invitationsError } = await supabase
       .from("mission_invitations")
       .select(`
         *,
         missions (*)
       `)
       .eq("driver_id", user.id)
-      .order("created_at", {
-        ascending: false,
-      });
+      .order("created_at", { ascending: false });
 
-  if (invitationsError) {
-    console.error(invitationsError);
+    if (invitationsError) {
+      console.error(invitationsError);
+      setLoading(false);
+      return;
+    }
+
+    const merged = [
+      ...(applicationsData || []).map((item) => ({
+        type: "application",
+        status: normalizeStatus(item.status),
+        mission: item.missions,
+      })),
+      ...(invitationsData || []).map((item) => ({
+        type: "invitation",
+        status: normalizeStatus(item.status),
+        mission: item.missions,
+      })),
+    ];
+
+    const uniqueMissions = merged.filter(
+      (item, index, array) =>
+        item.mission?.id &&
+        index === array.findIndex((other) => other.mission?.id === item.mission?.id)
+    );
+
+    setMissions(uniqueMissions);
     setLoading(false);
-    return;
   }
-
-  const merged = [
-    ...(applicationsData || []).map((item) => ({
-      type: "application",
-      status: item.status,
-      mission: item.missions,
-    })),
-
-    ...(invitationsData || []).map((item) => ({
-      type: "invitation",
-      status: item.status,
-      mission: item.missions,
-    })),
-  ];
-
-  const uniqueMissions = merged.filter(
-  (item, index, array) =>
-    item.mission?.id &&
-    index ===
-      array.findIndex(
-        (other) =>
-          other.mission?.id === item.mission?.id
-      )
-);
-
-setMissions(uniqueMissions);
-  setLoading(false);
-}
 
   function filteredMissions() {
-  switch (activeTab) {
-    case "en-cours":
-      return missions.filter(
-        (m) =>
-          m.status === "Acceptée" &&
-          m.mission?.status !== "Terminée"
-      );
-
-    case "candidatures":
-      return missions.filter(
-        (m) => m.status === "En attente"
-      );
-
-    case "refusees":
-      return missions.filter(
-        (m) => m.status === "Refusée"
-      );
-
-    case "archivees":
-      return missions.filter((m) => {
-        const endDate = new Date(
-          m.mission?.end_time
-        );
-
-        return (
-          m.mission?.status === "Terminée" ||
-          endDate < new Date()
-        );
-      });
-
-    default:
-      return missions;
-  }
-}
-
-async function completeMission(mission) {
-  console.log("MISSION REÇUE :", mission);
-
-  if (!mission?.id) {
-    alert("ID mission introuvable");
-    return;
+    switch (activeTab) {
+      case "en-cours":
+        return missions.filter((item) => isCurrent(item));
+      case "candidatures":
+        return missions.filter((item) => item.status === "En attente");
+      case "refusees":
+        return missions.filter((item) => refusedStatuses.includes(item.status));
+      case "archivees":
+        return missions.filter((item) => isArchived(item));
+      default:
+        return missions;
+    }
   }
 
-  const { error } = await supabase
-    .from("missions")
-    .update({
-      status: "Terminée",
-      completed_by_driver: true,
-      completed_at: new Date().toISOString(),
-      billing_status: "À facturer",
-      invoice_status: "À payer",
-    })
-    .eq("id", mission.id);
+  async function completeMission(mission) {
+    if (!mission?.id) {
+      alert("ID mission introuvable");
+      return;
+    }
 
-  if (error) {
-    console.error(error);
-    alert("Erreur validation mission terminée");
-    return;
+    const { error } = await supabase
+      .from("missions")
+      .update({
+        status: "Terminée",
+        completed_by_driver: true,
+        completed_at: new Date().toISOString(),
+        billing_status: "À facturer",
+        invoice_status: "À payer",
+      })
+      .eq("id", mission.id);
+
+    if (error) {
+      console.error(error);
+      alert("Erreur validation mission terminée");
+      return;
+    }
+
+    setPopup({
+      type: "success",
+      title: "Mission terminée",
+      message: "La mission a bien été marquée comme terminée.",
+    });
+
+    setSelectedMission(null);
+    await loadMissions();
   }
 
-  setPopup({
-  type: "success",
-  title: "Mission terminée",
-  message:
-    "La mission a bien été marquée comme terminée.",
-});
+  async function reportMission(mission) {
+    const user = await getCurrentUser();
 
-  setSelectedMission(null);
+    if (!user) {
+      alert("Utilisateur introuvable");
+      return;
+    }
 
-  await loadMissions();
-}
+    if (!mission?.id) {
+      alert("Mission introuvable");
+      return;
+    }
 
-async function reportMission(mission) {
-  const user = await getCurrentUser();
+    if (!reportReason.trim()) {
+      alert("Expliquez le problème avant d'envoyer.");
+      return;
+    }
 
-  if (!user) {
-    alert("Utilisateur introuvable");
-    return;
+    const { data: ticket, error: ticketError } = await supabase
+      .from("support_tickets")
+      .insert([
+        {
+          mission_id: mission.id,
+          user_id: user.id,
+          status: "open",
+          subject: mission.title || "Signalement mission",
+        },
+      ])
+      .select()
+      .single();
+
+    if (ticketError) {
+      console.error(ticketError);
+      alert("Erreur création ticket");
+      return;
+    }
+
+    const { error: messageError } = await supabase
+      .from("support_messages")
+      .insert([
+        {
+          ticket_id: ticket.id,
+          sender_id: user.id,
+          sender_role: "driver",
+          message: reportReason,
+        },
+      ]);
+
+    if (messageError) {
+      console.error(messageError);
+      alert("Erreur envoi message");
+      return;
+    }
+
+    await supabase
+      .from("missions")
+      .update({
+        is_reported: true,
+        report_reason: reportReason,
+        reported_by: user.id,
+        reported_at: new Date().toISOString(),
+      })
+      .eq("id", mission.id);
+
+    setPopup({
+      type: "success",
+      title: "Signalement envoyé",
+      message: "Votre demande a été transmise à l'administration Shiftly.",
+    });
+
+    setReportReason("");
+    setReportMissionTarget(null);
+    setSelectedMission(null);
+    await loadMissions();
   }
 
-  if (!mission?.id) {
-    alert("Mission introuvable");
-    return;
-  }
-
-  if (!reportReason.trim()) {
-    alert("Expliquez le problème avant d’envoyer.");
-    return;
-  }
-
-  const { data: ticket, error: ticketError } = await supabase
-    .from("support_tickets")
-    .insert([
-      {
-        mission_id: mission.id,
-        user_id: user.id,
-        status: "open",
-        subject: mission.title || "Signalement mission",
-      },
-    ])
-    .select()
-    .single();
-
-  if (ticketError) {
-    console.error(ticketError);
-    alert("Erreur création ticket");
-    return;
-  }
-
-  const { error: messageError } = await supabase
-    .from("support_messages")
-    .insert([
-      {
-        ticket_id: ticket.id,
-        sender_id: user.id,
-        sender_role: "driver",
-        message: reportReason,
-      },
-    ]);
-
-  if (messageError) {
-    console.error(messageError);
-    alert("Erreur envoi message");
-    return;
-  }
-
-  await supabase
-    .from("missions")
-    .update({
-      is_reported: true,
-      report_reason: reportReason,
-      reported_by: user.id,
-      reported_at: new Date().toISOString(),
-    })
-    .eq("id", mission.id);
-
-  setPopup({
-    type: "success",
-    title: "Signalement envoyé",
-    message:
-      "Votre demande a été transmise à l’administration Shiftly.",
-  });
-
-  setReportReason("");
-  setReportMissionTarget(null);
-  setSelectedMission(null);
-
-  await loadMissions();
-}
+  const visibleMissions = filteredMissions();
 
   return (
-    <div className="page">
-      <div className="top">
-        <h1>Mes missions</h1>
-
+    <main className="driverMissionsPage">
+      <aside className="missionsSidebar">
         <button
-  disabled={pageLocked}
-  onClick={() => {
-    if (pageLocked) return;
-
-    setPageLocked(true);
-
-    navigate("/driver", {
-      replace: true,
-    });
-  }}
->
-  Retour dashboard
-</button>
-      </div>
-
-      <div className="tabs">
-        <button
-          className={
-            activeTab === "en-cours"
-              ? "active"
-              : ""
-          }
-          onClick={() =>
-            setActiveTab("en-cours")
-          }
-        >
-          En cours
-        </button>
-
-        <button
-          className={
-            activeTab ===
-            "candidatures"
-              ? "active"
-              : ""
-          }
-          onClick={() =>
-            setActiveTab("candidatures")
-          }
-        >
-          Candidatures
-        </button>
-
-        <button
-          className={
-            activeTab === "refusees"
-              ? "active"
-              : ""
-          }
-          onClick={() =>
-            setActiveTab("refusees")
-          }
-        >
-          Refusées
-        </button>
-
-        <button
-          className={
-            activeTab === "archivees"
-              ? "active"
-              : ""
-          }
-          onClick={() =>
-            setActiveTab("archivees")
-          }
-        >
-          Archivées
-        </button>
-      </div>
-
-      <div className="list">
-  {loading && (
-    <div>Chargement...</div>
-  )}
-
-  {!loading &&
-    filteredMissions().map(
-      (item, index) => (
-        <div
-          className="card"
-          key={index}
-        >
-          <div>
-            <strong>
-              {
-                item.mission
-                  ?.title
-              }
-            </strong>
-
-            <p>
-              📍{" "}
-              {
-                item.mission
-                  ?.pickup
-              }{" "}
-              →{" "}
-              {
-                item.mission
-                  ?.dropoff
-              }
-            </p>
-
-            <p>
-              📅{" "}
-              {new Date(
-                item.mission?.start_time
-              ).toLocaleString(
-                "fr-FR"
-              )}
-            </p>
-
-            <p>
-              💶{" "}
-              {item.mission
-                ?.price ||
-                "Non renseigné"}
-            </p>
-          </div>
-
-          <div className="card-actions">
-            <span className="status">
-              {item.status}
-            </span>
-
-            <button
-  className="detail-btn"
-  onClick={() => setSelectedMission(item)}
->
-  Voir détail
-</button>
-
-{activeTab === "en-cours" && (
-  <button
-  type="button"
-  className="complete-btn"
-  onClick={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    console.log("CLIC MISSION TERMINÉE", item.mission);
-
-    completeMission(item.mission);
-  }}
->
-  Mission terminée
-</button>
-)}
-
-          </div>
-        </div>
-      )
-    )}
-</div>
-
-      {selectedMission && (
-  <div
-    className="modal-overlay"
-    onClick={() => setSelectedMission(null)}
-  >
-    <div className="modal" onClick={(e) => e.stopPropagation()}>
-      <button
-        className="close"
-        onClick={() => setSelectedMission(null)}
-      >
-        ✕
-      </button>
-
-      <h2>{selectedMission.mission?.title}</h2>
-
-      <p>📍 {selectedMission.mission?.pickup} → {selectedMission.mission?.dropoff}</p>
-      <p>📅 Départ : {new Date(selectedMission.mission?.start_time).toLocaleString("fr-FR")}</p>
-      <p>🔁 Retour : {new Date(selectedMission.mission?.end_time).toLocaleString("fr-FR")}</p>
-      <p>🚍 Véhicule : {selectedMission.mission?.vehicle}</p>
-      <p>👥 Passagers : {selectedMission.mission?.passengers}</p>
-      <p>💶 Prix : {selectedMission.mission?.price || "Non renseigné"}</p>
-      <p>📄 Documents : {selectedMission.mission?.documents || "Non renseigné"}</p>
-      <p>📝 Commentaire : {selectedMission.mission?.comment || "Aucun commentaire"}</p>
-      <p>📌 Statut : {selectedMission.status}</p>
-
-<div className="modal-actions">
-
-  <button
-  className="report-btn"
-  onClick={() =>
-    setReportMissionTarget(selectedMission.mission)
-  }
->
-  Signaler un problème
-</button>
-
-  <button
-    className="message-btn"
-    onClick={() => {
-      alert(
-        "Messagerie bientôt disponible"
-      );
-    }}
-  >
-    Contacter l’entreprise
-  </button>
-
-</div>
-    </div>
-  </div>
-)}
-
-{reportMissionTarget && (
-  <div className="modal-overlay">
-    <div className="modal report-modal">
-      <button
-        className="close"
-        onClick={() => {
-          setReportMissionTarget(null);
-          setReportReason("");
-        }}
-      >
-        ✕
-      </button>
-
-      <h2>Signaler un problème</h2>
-
-      <p className="report-help">
-        Expliquez brièvement le problème rencontré sur cette mission.
-      </p>
-
-      <textarea
-        className="report-textarea"
-        placeholder="Exemple : horaires incorrects, mission non conforme, problème avec l’entreprise..."
-        value={reportReason}
-        onChange={(e) => setReportReason(e.target.value)}
-      />
-
-      <div className="modal-actions">
-        <button
-          className="report-btn"
-          onClick={() => reportMission(reportMissionTarget)}
-        >
-          Envoyer le signalement
-        </button>
-
-        <button
-          className="message-btn"
+          className="backButton"
+          disabled={pageLocked}
           onClick={() => {
-            setReportMissionTarget(null);
-            setReportReason("");
+            if (pageLocked) return;
+            setPageLocked(true);
+            navigate("/driver", { replace: true });
           }}
         >
-          Annuler
+          <ArrowLeft size={18} />
+          Dashboard
         </button>
-      </div>
-    </div>
-  </div>
-)}
 
-{popup && (
-  <div className="modal-overlay">
-    <div className="popup">
+        <div className="brandBlock">
+          <div className="mark">S</div>
+          <div>
+            <strong>Shiftly</strong>
+            <span>Driver</span>
+          </div>
+        </div>
 
-      <div className="popup-icon success">
-        ✅
-      </div>
+        <div className="sideHero">
+          <span>Missions</span>
+          <h1>Suivi de tes missions</h1>
+          <p>Retrouve tes candidatures, missions acceptées, refusées et archivées.</p>
+        </div>
 
-      <h3>{popup.title}</h3>
+        <div className="sideStats">
+          <Stat icon={Bus} value={counts.current} label="en cours" />
+          <Stat icon={Clock3} value={counts.pending} label="en attente" />
+          <Stat icon={Archive} value={counts.archived} label="archivées" />
+        </div>
+      </aside>
 
-      <p>{popup.message}</p>
+      <section className="missionsContent">
+        <header className="contentHeader">
+          <div>
+            <span className="eyebrow">Espace conducteur</span>
+            <h2>Mes missions</h2>
+            <p>Suivez vos missions et gérez les actions importantes depuis un seul endroit.</p>
+          </div>
+        </header>
 
-      <button
-        onClick={() => setPopup(null)}
-      >
-        Fermer
-      </button>
+        <div className="tabs">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={activeTab === tab.id ? "active" : ""}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-    </div>
-  </div>
-)}
+        <section className="missionListPanel">
+          {loading && <div className="emptyState">Chargement...</div>}
+
+          {!loading && visibleMissions.length === 0 && (
+            <div className="emptyState">
+              <FileText size={34} />
+              <h3>Aucune mission</h3>
+              <p>Les missions correspondant à cet onglet apparaîtront ici.</p>
+            </div>
+          )}
+
+          {!loading &&
+            visibleMissions.map((item) => (
+              <MissionCard
+                key={`${item.type}-${item.mission?.id}`}
+                item={item}
+                activeTab={activeTab}
+                onOpen={setSelectedMission}
+                onComplete={completeMission}
+              />
+            ))}
+        </section>
+      </section>
+
+      {selectedMission && (
+        <div className="modalOverlay" onClick={() => setSelectedMission(null)}>
+          <div className="missionModal" onClick={(event) => event.stopPropagation()}>
+            <button className="closeButton" onClick={() => setSelectedMission(null)}>
+              <X size={20} />
+            </button>
+
+            <span className="modalEyebrow">{selectedMission.status}</span>
+            <h2>{selectedMission.mission?.title}</h2>
+
+            <div className="modalDetails">
+              <Detail icon={MapPin} label="Trajet" value={`${selectedMission.mission?.pickup || "Départ"} → ${selectedMission.mission?.dropoff || "Arrivée"}`} />
+              <Detail icon={Clock3} label="Départ" value={formatDate(selectedMission.mission?.start_time)} />
+              <Detail icon={Clock3} label="Retour" value={formatDate(selectedMission.mission?.end_time)} />
+              <Detail icon={Bus} label="Véhicule" value={selectedMission.mission?.vehicle || "Non renseigné"} />
+              <Detail icon={Wallet} label="Prix" value={selectedMission.mission?.price || "Non renseigné"} />
+              <Detail icon={FileText} label="Documents" value={selectedMission.mission?.documents || "Non renseigné"} />
+            </div>
+
+            <div className="commentBox">
+              <strong>Commentaire</strong>
+              <p>{selectedMission.mission?.comment || "Aucun commentaire"}</p>
+            </div>
+
+            <div className="modalActions">
+              <button className="reportButton" onClick={() => setReportMissionTarget(selectedMission.mission)}>
+                <AlertTriangle size={18} />
+                Signaler un problème
+              </button>
+
+              <button
+                className="messageButton"
+                onClick={() => alert("Messagerie bientôt disponible")}
+              >
+                <MessageCircle size={18} />
+                Contacter l'entreprise
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reportMissionTarget && (
+        <div className="modalOverlay">
+          <div className="missionModal reportModal">
+            <button
+              className="closeButton"
+              onClick={() => {
+                setReportMissionTarget(null);
+                setReportReason("");
+              }}
+            >
+              <X size={20} />
+            </button>
+
+            <span className="modalEyebrow danger">Signalement</span>
+            <h2>Signaler un problème</h2>
+            <p className="reportHelp">
+              Expliquez brièvement le problème rencontré sur cette mission.
+            </p>
+
+            <textarea
+              className="reportTextarea"
+              placeholder="Exemple : horaires incorrects, mission non conforme, problème avec l'entreprise..."
+              value={reportReason}
+              onChange={(event) => setReportReason(event.target.value)}
+            />
+
+            <div className="modalActions">
+              <button className="reportButton" onClick={() => reportMission(reportMissionTarget)}>
+                Envoyer le signalement
+              </button>
+
+              <button
+                className="messageButton"
+                onClick={() => {
+                  setReportMissionTarget(null);
+                  setReportReason("");
+                }}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {popup && (
+        <div className="modalOverlay">
+          <div className="popup">
+            <div className="popupIcon">
+              <CheckCircle2 size={38} />
+            </div>
+            <h3>{popup.title}</h3>
+            <p>{popup.message}</p>
+            <button onClick={() => setPopup(null)}>Fermer</button>
+          </div>
+        </div>
+      )}
 
       <style>{`
-        .page {
+        .driverMissionsPage {
           min-height: 100svh;
-          padding: 40px;
-          background:
-            linear-gradient(
-              135deg,
-              #0f172a 0%,
-              #162033 52%,
-              #1f2937 100%
-            );
+          display: grid;
+          grid-template-columns: 320px 1fr;
+          background: #f8fafc;
+          color: #0f172a;
+          font-family: Inter, system-ui, Arial, sans-serif;
+        }
+
+        .driverMissionsPage button,
+        .driverMissionsPage textarea {
+          font: inherit;
+        }
+
+        .driverMissionsPage button {
+          border: 0;
+          cursor: pointer;
+        }
+
+        .driverMissionsPage button:disabled {
+          opacity: 0.62;
+          cursor: not-allowed;
+        }
+
+        .missionsSidebar {
+          min-height: 100svh;
+          padding: 28px;
+          background: #07152f;
           color: white;
-          font-family: Inter, Arial;
-        }
-
-        .popup {
-  width: 100%;
-  max-width: 420px;
-
-  padding: 32px;
-
-  border-radius: 30px;
-
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255,255,255,0.14),
-      rgba(255,255,255,0.06)
-    );
-
-  border:
-    1px solid rgba(255,255,255,0.12);
-
-  text-align: center;
-
-  box-shadow:
-    0 40px 120px rgba(0,0,0,0.45);
-
-  backdrop-filter: blur(30px);
-}
-
-.popup-icon {
-  width: 82px;
-  height: 82px;
-
-  border-radius: 999px;
-
-  margin: 0 auto 18px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  font-size: 38px;
-}
-
-.popup-icon.success {
-  background:
-    rgba(22,163,74,0.18);
-}
-
-.popup h3 {
-  margin: 0;
-  font-size: 30px;
-  font-weight: 950;
-}
-
-.popup p {
-  margin-top: 14px;
-  color: #cbd5e1;
-  line-height: 1.5;
-}
-
-.popup button {
-  width: 100%;
-
-  margin-top: 24px;
-
-  padding: 15px;
-
-  border: none;
-
-  border-radius: 999px;
-
-  background:
-    linear-gradient(
-      180deg,
-      #16a34a,
-      #15803d
-    );
-
-  color: white;
-
-  font-weight: 900;
-
-  cursor: pointer;
-}
-
-        .top {
           display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 30px;
+          flex-direction: column;
+          gap: 24px;
         }
 
-        .report-help {
-  color: #cbd5e1;
-  line-height: 1.5;
-}
+        .backButton {
+          width: fit-content;
+          display: inline-flex;
+          align-items: center;
+          gap: 9px;
+          min-height: 42px;
+          border-radius: 999px;
+          padding: 0 14px;
+          background: rgba(255, 255, 255, 0.08);
+          color: #dbeafe;
+          font-weight: 850;
+        }
 
-.report-modal {
-  max-width: 560px;
-}
+        .brandBlock {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
 
-.report-textarea {
-  width: 100%;
-  min-height: 130px;
-  margin-top: 18px;
-  margin-bottom: 20px;
-  padding: 18px;
-  border-radius: 24px;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(15,23,42,0.92);
-  color: white;
-  font-size: 15px;
-  font-family: Inter, Arial;
-  outline: none;
-  resize: none;
-  box-sizing: border-box;
-}
+        .mark {
+          width: 48px;
+          height: 48px;
+          display: grid;
+          place-items: center;
+          border-radius: 14px;
+          background: #2563eb;
+          font-size: 30px;
+          font-weight: 950;
+          font-style: italic;
+        }
 
-.report-textarea::placeholder {
-  color: #94a3b8;
-}
+        .brandBlock strong {
+          display: block;
+          font-size: 28px;
+          font-style: italic;
+          letter-spacing: -0.07em;
+          line-height: 0.9;
+        }
 
-        .modal-actions {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin-top: 24px;
-  align-items: stretch;
-}
+        .brandBlock span,
+        .sideHero span {
+          display: inline-flex;
+          margin-top: 7px;
+          padding: 4px 8px;
+          border-radius: 7px;
+          background: #2563eb;
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+        }
 
-.report-textarea {
-  width: 100%;
+        .sideHero {
+          padding-top: 24px;
+        }
 
-  min-height: 110px;
+        .sideHero h1 {
+          margin: 18px 0 12px;
+          font-size: 36px;
+          line-height: 0.95;
+          letter-spacing: -0.065em;
+        }
 
-  margin-top: 22px;
-  margin-bottom: 20px;
+        .sideHero p {
+          margin: 0;
+          color: #94a3b8;
+          line-height: 1.6;
+        }
 
-  padding: 18px;
+        .sideStats {
+          display: grid;
+          gap: 10px;
+          margin-top: auto;
+        }
 
-  border-radius: 24px;
+        .sideStat {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 16px;
+          border-radius: 18px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
 
-  border:
-    1px solid rgba(255,255,255,0.08);
+        .sideStat svg {
+          color: #93c5fd;
+        }
 
-  background:
-    linear-gradient(
-      180deg,
-      rgba(15,23,42,0.92),
-      rgba(15,23,42,0.82)
-    );
+        .sideStat strong {
+          display: block;
+          font-size: 26px;
+        }
 
-  color: white;
+        .sideStat span {
+          color: #94a3b8;
+          font-size: 12px;
+          font-weight: 850;
+        }
 
-  font-size: 15px;
+        .missionsContent {
+          padding: 30px;
+          overflow: auto;
+        }
 
-  font-family: Inter, Arial;
+        .contentHeader {
+          margin-bottom: 20px;
+        }
 
-  outline: none;
+        .eyebrow {
+          display: inline-flex;
+          margin-bottom: 10px;
+          padding: 7px 11px;
+          border-radius: 999px;
+          background: #dbeafe;
+          color: #2563eb;
+          font-size: 12px;
+          font-weight: 950;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
 
-  resize: none;
+        .contentHeader h2 {
+          margin: 0;
+          font-size: clamp(38px, 5vw, 58px);
+          line-height: 1;
+          letter-spacing: -0.07em;
+        }
 
-  box-sizing: border-box;
-
-  transition: 0.2s;
-}
-
-.report-textarea:focus {
-  border:
-    1px solid rgba(59,130,246,0.35);
-
-  background:
-    rgba(15,23,42,0.98);
-}
-
-.report-textarea::placeholder {
-  color: #94a3b8;
-}
-
-.modal-actions button {
-  width: 100%;
-  height: 52px;
-  min-height: 52px;
-  margin: 0;
-  padding: 0 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.report-btn {
-  padding: 14px;
-
-  border: none;
-
-  border-radius: 999px;
-
-  background:
-    rgba(220,38,38,0.16);
-
-  color: #fecaca;
-
-  font-weight: 900;
-
-  cursor: pointer;
-}
-
-        .complete-btn {
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: none;
-  background: linear-gradient(180deg, #16a34a, #15803d);
-  color: white;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-        .detail-btn,
-.message-btn {
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: none;
-  background: linear-gradient(180deg, #2563eb, #1d4ed8);
-  color: white;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-  padding: 20px;
-  border-radius: 20px;
-  background:
-    rgba(255,255,255,0.08);
-  border:
-    1px solid
-    rgba(255,255,255,0.08);
-}
-
-.card-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.card p {
-  color: #94a3b8;
-  margin-top: 6px;
-}
-
-.status {
-  padding: 10px 14px;
-  border-radius: 999px;
-  background:
-    rgba(37,99,235,0.18);
-  color: #bfdbfe;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(2,6,23,0.72);
-  backdrop-filter: blur(8px);
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  z-index: 999;
-  padding: 24px 20px;
-  overflow-y: auto;
-}
-
-.report-btn {
-  width: 100%;
-
-  margin-top: 18px;
-
-  padding: 14px;
-
-  border: none;
-
-  border-radius: 999px;
-
-  background:
-    rgba(220,38,38,0.16);
-
-  color: #fecaca;
-
-  font-weight: 900;
-
-  cursor: pointer;
-}
-
-.modal {
-  width: 100%;
-  max-width: 620px;
-  max-height: calc(100svh - 48px);
-  overflow-y: auto;
-  background: linear-gradient(180deg, #111827, #0f172a);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 28px;
-  padding: 28px;
-  color: white;
-  box-shadow: 0 40px 120px rgba(0,0,0,0.45);
-}
-
-.close {
-  float: right;
-  width: 42px;
-  height: 42px;
-  border-radius: 999px;
-  border: none;
-  background: rgba(255,255,255,0.08);
-  color: white;
-  cursor: pointer;
-}
+        .contentHeader p {
+          margin: 12px 0 0;
+          color: #64748b;
+          line-height: 1.6;
+        }
 
         .tabs {
           display: flex;
-          gap: 10px;
           flex-wrap: wrap;
-          margin-bottom: 30px;
+          gap: 10px;
+          margin-bottom: 18px;
         }
 
-        .tabs button,
-        .top button {
-          border: none;
-          padding: 12px 18px;
+        .tabs button {
+          min-height: 42px;
           border-radius: 999px;
-          background:
-            rgba(255,255,255,0.08);
+          padding: 0 16px;
+          background: white;
+          color: #475569;
+          border: 1px solid #dbe3ee !important;
+          font-weight: 900;
+        }
+
+        .tabs button.active {
+          background: #2563eb;
+          border-color: #2563eb !important;
           color: white;
-          cursor: pointer;
-          font-weight: 700;
+          box-shadow: 0 14px 30px rgba(37, 99, 235, 0.2);
         }
 
-        .tabs .active {
-          background:
-            linear-gradient(
-              180deg,
-              #2563eb,
-              #1d4ed8
-            );
+        .missionListPanel {
+          display: grid;
+          gap: 12px;
         }
 
-        .list {
+        .missionCard,
+        .emptyState {
+          border-radius: 24px;
+          background: white;
+          border: 1px solid #dbe3ee;
+          box-shadow: 0 16px 48px rgba(15, 23, 42, 0.06);
+        }
+
+        .missionCard {
+          display: grid;
+          grid-template-columns: 50px 1fr auto;
+          gap: 14px;
+          align-items: start;
+          padding: 18px;
+        }
+
+        .missionIcon {
+          width: 50px;
+          height: 50px;
+          display: grid;
+          place-items: center;
+          border-radius: 16px;
+          background: #dbeafe;
+          color: #2563eb;
+        }
+
+        .missionCard h3 {
+          margin: 0 0 9px;
+          font-size: 20px;
+          letter-spacing: -0.04em;
+        }
+
+        .missionMeta {
           display: flex;
-          flex-direction: column;
-          gap: 16px;
+          flex-wrap: wrap;
+          gap: 9px;
+          color: #64748b;
+          font-size: 13px;
+          font-weight: 760;
         }
 
-        .card {
-          display: flex;
-          justify-content: space-between;
+        .missionMeta span {
+          display: inline-flex;
           align-items: center;
-          gap: 20px;
-          padding: 20px;
-          border-radius: 20px;
-          background:
-            rgba(255,255,255,0.08);
-          border:
-            1px solid
-            rgba(255,255,255,0.08);
+          gap: 6px;
         }
 
-        .card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-        .card p {
-          color: #94a3b8;
-          margin-top: 6px;
+        .missionActions {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 8px;
+          flex-wrap: wrap;
+          min-width: 220px;
         }
 
-        .status {
-          padding: 10px 14px;
+        .statusBadge,
+        .detailButton,
+        .completeButton {
+          min-height: 40px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
           border-radius: 999px;
-          background:
-            rgba(37,99,235,0.18);
-          color: #bfdbfe;
-          font-weight: 800;
-          white-space: nowrap;
+          padding: 0 13px;
+          font-weight: 900;
+          font-size: 13px;
         }
 
-        @media (max-width: 900px) {
-          .page {
-            padding: 20px;
+        .statusBadge {
+          background: #dbeafe;
+          color: #2563eb;
+        }
+
+        .detailButton {
+          background: #0f172a;
+          color: white;
+        }
+
+        .completeButton {
+          background: #16a34a;
+          color: white;
+        }
+
+        .emptyState {
+          min-height: 280px;
+          display: grid;
+          place-items: center;
+          text-align: center;
+          padding: 40px;
+          color: #64748b;
+        }
+
+        .emptyState svg {
+          color: #2563eb;
+          margin-bottom: 12px;
+        }
+
+        .emptyState h3 {
+          margin: 0 0 8px;
+          color: #0f172a;
+          letter-spacing: -0.04em;
+        }
+
+        .modalOverlay {
+          position: fixed;
+          inset: 0;
+          z-index: 50;
+          display: grid;
+          place-items: center;
+          padding: 20px;
+          background: rgba(15, 23, 42, 0.62);
+          backdrop-filter: blur(8px);
+          overflow-y: auto;
+        }
+
+        .missionModal,
+        .popup {
+          width: min(620px, 100%);
+          border-radius: 28px;
+          background: white;
+          color: #0f172a;
+          box-shadow: 0 28px 90px rgba(15, 23, 42, 0.28);
+        }
+
+        .missionModal {
+          position: relative;
+          padding: 28px;
+        }
+
+        .closeButton {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+          width: 38px;
+          height: 38px;
+          display: grid;
+          place-items: center;
+          border-radius: 999px;
+          background: #f1f5f9;
+          color: #0f172a;
+        }
+
+        .modalEyebrow {
+          display: inline-flex;
+          padding: 7px 11px;
+          border-radius: 999px;
+          background: #dbeafe;
+          color: #2563eb;
+          font-size: 12px;
+          font-weight: 950;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .modalEyebrow.danger {
+          background: #fee2e2;
+          color: #b91c1c;
+        }
+
+        .missionModal h2 {
+          margin: 16px 44px 20px 0;
+          font-size: 34px;
+          line-height: 1;
+          letter-spacing: -0.055em;
+        }
+
+        .modalDetails {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .detailItem {
+          display: flex;
+          gap: 10px;
+          padding: 14px;
+          border-radius: 18px;
+          background: #f8fafc;
+          border: 1px solid #e5eaf2;
+        }
+
+        .detailItem svg {
+          color: #2563eb;
+          flex: 0 0 auto;
+        }
+
+        .detailItem span {
+          display: block;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 900;
+        }
+
+        .detailItem strong {
+          display: block;
+          margin-top: 3px;
+          font-size: 14px;
+        }
+
+        .commentBox {
+          margin-top: 12px;
+          padding: 16px;
+          border-radius: 18px;
+          background: #f8fafc;
+          border: 1px solid #e5eaf2;
+        }
+
+        .commentBox p,
+        .reportHelp {
+          color: #64748b;
+          line-height: 1.55;
+        }
+
+        .modalActions {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
+          margin-top: 18px;
+        }
+
+        .reportButton,
+        .messageButton {
+          min-height: 50px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          border-radius: 999px;
+          font-weight: 950;
+        }
+
+        .reportButton {
+          background: #fee2e2;
+          color: #b91c1c;
+        }
+
+        .messageButton {
+          background: #2563eb;
+          color: white;
+        }
+
+        .reportTextarea {
+          width: 100%;
+          min-height: 130px;
+          border-radius: 18px;
+          border: 1px solid #dbe3ee;
+          background: #f8fafc;
+          color: #0f172a;
+          padding: 15px;
+          outline: none;
+          resize: vertical;
+          box-sizing: border-box;
+        }
+
+        .reportTextarea:focus {
+          border-color: #93c5fd;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+          background: white;
+        }
+
+        .popup {
+          padding: 30px;
+          text-align: center;
+        }
+
+        .popupIcon {
+          width: 72px;
+          height: 72px;
+          display: grid;
+          place-items: center;
+          margin: 0 auto 18px;
+          border-radius: 999px;
+          background: #dcfce7;
+          color: #16a34a;
+        }
+
+        .popup h3 {
+          margin: 0;
+          font-size: 30px;
+          letter-spacing: -0.05em;
+        }
+
+        .popup p {
+          color: #64748b;
+          line-height: 1.5;
+        }
+
+        .popup button {
+          width: 100%;
+          min-height: 50px;
+          border-radius: 999px;
+          background: #2563eb;
+          color: white;
+          font-weight: 950;
+        }
+
+        @media (max-width: 1040px) {
+          .driverMissionsPage {
+            grid-template-columns: 1fr;
           }
 
-          .card-actions {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-
-.card-actions button,
-.card-actions .status {
-  width: 100%;
-  min-width: 0;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.status {
-  height: 42px;
-}
-
-          .top {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 16px;
+          .missionsSidebar {
+            min-height: auto;
           }
 
-          .card {
-            flex-direction: column;
-            align-items: flex-start;
+          .sideStats {
+            margin-top: 0;
+            grid-template-columns: repeat(3, 1fr);
+          }
+        }
+
+        @media (max-width: 720px) {
+          .missionsContent,
+          .missionsSidebar {
+            padding: 18px;
           }
 
-          .status {
-            width: 100%;
-            text-align: center;
+          .sideStats,
+          .missionCard,
+          .modalDetails,
+          .modalActions {
+            grid-template-columns: 1fr;
+          }
+
+          .missionActions {
+            justify-content: flex-start;
+            min-width: 0;
           }
         }
       `}</style>
+    </main>
+  );
+}
+
+function MissionCard({ item, activeTab, onOpen, onComplete }) {
+  const mission = item.mission;
+
+  return (
+    <article className="missionCard">
+      <div className="missionIcon">
+        <Bus size={22} />
+      </div>
+
+      <div>
+        <h3>{mission?.title || "Mission"}</h3>
+        <div className="missionMeta">
+          <span>
+            <MapPin size={15} />
+            {mission?.pickup || "Départ"} → {mission?.dropoff || "Arrivée"}
+          </span>
+          <span>
+            <Clock3 size={15} />
+            {formatDate(mission?.start_time)}
+          </span>
+          <span>
+            <Wallet size={15} />
+            {mission?.price || "Non renseigné"}
+          </span>
+        </div>
+      </div>
+
+      <div className="missionActions">
+        <span className="statusBadge">{item.status}</span>
+        <button className="detailButton" onClick={() => onOpen(item)}>
+          Détails
+        </button>
+
+        {activeTab === "en-cours" && (
+          <button className="completeButton" onClick={() => onComplete(mission)}>
+            Mission terminée
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function Stat({ icon: Icon, value, label }) {
+  return (
+    <div className="sideStat">
+      <Icon size={22} />
+      <div>
+        <strong>{value}</strong>
+        <span>{label}</span>
+      </div>
     </div>
   );
+}
+
+function Detail({ icon: Icon, label, value }) {
+  return (
+    <div className="detailItem">
+      <Icon size={19} />
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+    </div>
+  );
+}
+
+function normalizeStatus(status) {
+  if (status === "AcceptÃ©e") return "Acceptée";
+  if (status === "RefusÃ©e") return "Refusée";
+  return status;
+}
+
+function isCurrent(item) {
+  return acceptedStatuses.includes(item.status) && !completedStatuses.includes(item.mission?.status);
+}
+
+function isArchived(item) {
+  const endDate = new Date(item.mission?.end_time);
+
+  return completedStatuses.includes(item.mission?.status) || endDate < new Date();
+}
+
+function formatDate(value) {
+  if (!value) return "Date non renseignée";
+
+  return new Date(value).toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

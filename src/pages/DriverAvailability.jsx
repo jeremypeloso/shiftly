@@ -1,5 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser } from "../lib/auth";
 
@@ -109,6 +119,8 @@ const departmentOptions = [
   "Europe",
 ];
 
+const weekDays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
 export default function DriverAvailability() {
   const navigate = useNavigate();
 
@@ -122,6 +134,8 @@ export default function DriverAvailability() {
   const [departmentToAdd, setDepartmentToAdd] = useState("");
   const [saved, setSaved] = useState(false);
 
+  const monthDays = useMemo(() => getMonthDays(currentMonth), [currentMonth]);
+
   useEffect(() => {
     loadAvailability();
   }, []);
@@ -129,10 +143,7 @@ export default function DriverAvailability() {
   async function loadAvailability() {
     const user = await getCurrentUser();
 
-    if (!user) {
-  console.warn("Session absente temporairement");
-  return;
-}
+    if (!user) return;
 
     const { data, error } = await supabase
       .from("profiles")
@@ -147,36 +158,6 @@ export default function DriverAvailability() {
 
     setAvailableDates(data?.availability_days || []);
     setSelectedDepartments(data?.preferred_departments || []);
-  }
-
-  function formatDate(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
-  }
-
-  function getMonthDays() {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-
-    const days = [];
-
-    const startOffset = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
-
-    for (let i = 0; i < startOffset; i++) {
-      days.push(null);
-    }
-
-    for (let day = 1; day <= lastDay.getDate(); day++) {
-      days.push(new Date(year, month, day));
-    }
-
-    return days;
   }
 
   function toggleDate(date) {
@@ -210,17 +191,13 @@ export default function DriverAvailability() {
   }
 
   function removeDepartment(dep) {
-    setSelectedDepartments(
-      selectedDepartments.filter((item) => item !== dep)
-    );
+    setSelectedDepartments(selectedDepartments.filter((item) => item !== dep));
   }
 
   async function saveAvailability() {
     const user = await getCurrentUser();
 
-    if (!user) {
-      return;
-    }
+    if (!user) return;
 
     const { error } = await supabase
       .from("profiles")
@@ -249,210 +226,405 @@ export default function DriverAvailability() {
     year: "numeric",
   });
 
-  const weekDays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-
   return (
-    <main className="page">
-      <div className="card">
-        <button className="back" onClick={() => navigate("/driver")}>
-          ← Retour dashboard
+    <main className="availabilityPage">
+      <aside className="availabilitySidebar">
+        <button className="backButton" onClick={() => navigate("/driver")}>
+          <ArrowLeft size={18} />
+          Dashboard
         </button>
 
-        <p className="eyebrow">Conducteur</p>
-        <h1>Mes disponibilités</h1>
+        <div className="brandBlock">
+          <div className="mark">S</div>
+          <div>
+            <strong>Shiftly</strong>
+            <span>Driver</span>
+          </div>
+        </div>
 
-        <p className="subtitle">
-          Sélectionnez les dates où vous êtes disponible et vos zones de mission.
-        </p>
+        <div className="sideHero">
+          <span>Disponibilités</span>
+          <h1>Où et quand veux-tu rouler ?</h1>
+          <p>
+            Ces informations améliorent le matching des missions ouvertes avec
+            ton profil conducteur.
+          </p>
+        </div>
 
-        {saved && <div className="success">Disponibilités mises à jour ✅</div>}
+        <div className="sideStats">
+          <Stat icon={CalendarDays} value={availableDates.length} label="jours disponibles" />
+          <Stat icon={MapPin} value={selectedDepartments.length} label="zones choisies" />
+        </div>
+      </aside>
 
-        <section className="section">
-          <div className="section-top">
-            <h2>Calendrier des disponibilités</h2>
-
-            <div className="month-actions">
-              <button onClick={() => changeMonth(-1)}>←</button>
-              <strong>{monthLabel}</strong>
-              <button onClick={() => changeMonth(1)}>→</button>
-            </div>
+      <section className="availabilityContent">
+        <header className="contentHeader">
+          <div>
+            <span className="eyebrow">Planning conducteur</span>
+            <h2>Mes disponibilités</h2>
+            <p>Sélectionne tes dates disponibles et tes zones de mission favorites.</p>
           </div>
 
-          <div className="calendar">
-            {weekDays.map((day) => (
-              <div className="week-day" key={day}>
-                {day}
+          <button className="saveTop" onClick={saveAvailability}>
+            <Save size={18} />
+            Enregistrer
+          </button>
+        </header>
+
+        {saved && (
+          <div className="success">
+            <CheckCircle2 size={20} />
+            Disponibilités mises à jour
+          </div>
+        )}
+
+        <div className="availabilityGrid">
+          <section className="calendarPanel">
+            <div className="panelTitle">
+              <div>
+                <h3>Calendrier</h3>
+                <span>{availableDates.length} date(s) sélectionnée(s)</span>
               </div>
-            ))}
 
-            {getMonthDays().map((date, index) =>
-              date ? (
-                <button
-                  key={formatDate(date)}
-                  className={
-                    availableDates.includes(formatDate(date))
-                      ? "day selected"
-                      : "day"
-                  }
-                  onClick={() => toggleDate(date)}
-                >
-                  <span>{date.getDate()}</span>
+              <div className="monthActions">
+                <button onClick={() => changeMonth(-1)}>
+                  <ChevronLeft size={18} />
                 </button>
-              ) : (
-                <div className="empty-day" key={`empty-${index}`}></div>
-              )
-            )}
-          </div>
-        </section>
+                <strong>{monthLabel}</strong>
+                <button onClick={() => changeMonth(1)}>
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            </div>
 
-        <section className="section">
-          <h2>Zones géographiques</h2>
-
-          <div className="select-row">
-            <select
-              value={departmentToAdd}
-              onChange={(e) => setDepartmentToAdd(e.target.value)}
-            >
-              <option value="">Sélectionner un département</option>
-
-              {departmentOptions.map((dep) => (
-                <option key={dep} value={dep}>
-                  {dep}
-                </option>
+            <div className="calendar">
+              {weekDays.map((day) => (
+                <div className="weekDay" key={day}>
+                  {day}
+                </div>
               ))}
-            </select>
 
-            <button onClick={addDepartment}>Ajouter</button>
-          </div>
+              {monthDays.map((date, index) =>
+                date ? (
+                  <button
+                    key={formatDate(date)}
+                    className={availableDates.includes(formatDate(date)) ? "day selected" : "day"}
+                    onClick={() => toggleDate(date)}
+                  >
+                    <span>{date.getDate()}</span>
+                    {availableDates.includes(formatDate(date)) && <CheckCircle2 size={16} />}
+                  </button>
+                ) : (
+                  <div className="emptyDay" key={`empty-${index}`} />
+                )
+              )}
+            </div>
+          </section>
 
-          <div className="chips">
-            {selectedDepartments.length === 0 && (
-              <p className="empty-text">Aucune zone sélectionnée.</p>
-            )}
+          <section className="zonesPanel">
+            <div className="panelTitle">
+              <div>
+                <h3>Zones géographiques</h3>
+                <span>{selectedDepartments.length} zone(s)</span>
+              </div>
+            </div>
 
-            {selectedDepartments.map((dep) => (
-              <button
-                key={dep}
-                className="chip"
-                onClick={() => removeDepartment(dep)}
+            <div className="selectRow">
+              <select
+                value={departmentToAdd}
+                onChange={(event) => setDepartmentToAdd(event.target.value)}
               >
-                {dep} ✕
-              </button>
-            ))}
-          </div>
-        </section>
+                <option value="">Sélectionner un département</option>
+                {departmentOptions.map((dep) => (
+                  <option key={dep} value={dep}>
+                    {dep}
+                  </option>
+                ))}
+              </select>
 
-        <button className="save" onClick={saveAvailability}>
+              <button onClick={addDepartment}>Ajouter</button>
+            </div>
+
+            <div className="chips">
+              {selectedDepartments.length === 0 && (
+                <div className="emptyState">
+                  <MapPin size={26} />
+                  <p>Aucune zone sélectionnée.</p>
+                </div>
+              )}
+
+              {selectedDepartments.map((dep) => (
+                <button className="chip" key={dep} onClick={() => removeDepartment(dep)}>
+                  {dep}
+                  <Trash2 size={15} />
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <button className="saveBottom" onClick={saveAvailability}>
+          <Save size={18} />
           Enregistrer mes disponibilités
         </button>
-      </div>
+      </section>
 
       <style>{`
-        .page {
+        .availabilityPage {
           min-height: 100svh;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          padding: 24px;
-          color: white;
-          font-family: Inter, Arial, sans-serif;
-          background:
-            radial-gradient(circle at top left, rgba(251,191,36,0.1), transparent 34%),
-            radial-gradient(circle at bottom right, rgba(56,189,248,0.1), transparent 34%),
-            linear-gradient(135deg, #0f172a 0%, #162033 52%, #1f2937 100%);
+          display: grid;
+          grid-template-columns: 320px 1fr;
+          background: #f8fafc;
+          color: #0f172a;
+          font-family: Inter, system-ui, Arial, sans-serif;
         }
 
-        .card {
-          width: 100%;
-          max-width: 880px;
-          padding: 32px;
-          border-radius: 28px;
-          background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));
-          border: 1px solid rgba(255,255,255,0.1);
-          box-shadow: 0 30px 80px rgba(0,0,0,0.28);
+        .availabilityPage button,
+        .availabilityPage select {
+          font: inherit;
         }
 
-        .back {
-          margin-bottom: 20px;
-          border: none;
-          background: rgba(255,255,255,0.08);
-          color: white;
-          padding: 12px 16px;
-          border-radius: 999px;
+        .availabilityPage button {
+          border: 0;
           cursor: pointer;
-          font-weight: 800;
         }
 
-        .eyebrow {
-          color: #94a3b8;
-          margin: 0 0 8px;
-        }
-
-        h1 {
-          margin: 0;
-          font-size: 42px;
-          font-weight: 950;
-          letter-spacing: -0.05em;
-        }
-
-        .subtitle {
-          color: #cbd5e1;
-          margin: 14px 0 24px;
-          line-height: 1.5;
-        }
-
-        .success {
-          margin-bottom: 20px;
-          padding: 14px 18px;
-          border-radius: 16px;
-          background: rgba(22,163,74,0.18);
-          border: 1px solid rgba(22,163,74,0.3);
-          color: #bbf7d0;
-          font-weight: 800;
-        }
-
-        .section {
-          margin-top: 24px;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 22px;
-          padding: 22px;
-        }
-
-        .section-top {
+        .availabilitySidebar {
+          min-height: 100svh;
+          padding: 28px;
+          background: #07152f;
+          color: white;
           display: flex;
-          justify-content: space-between;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        .backButton {
+          width: fit-content;
+          display: inline-flex;
           align-items: center;
-          gap: 16px;
-          margin-bottom: 18px;
+          gap: 9px;
+          min-height: 42px;
+          border-radius: 999px;
+          padding: 0 14px;
+          background: rgba(255, 255, 255, 0.08);
+          color: #dbeafe;
+          font-weight: 850;
         }
 
-        h2 {
-          margin: 0;
-          font-size: 24px;
-        }
-
-        .month-actions {
+        .brandBlock {
           display: flex;
           align-items: center;
           gap: 12px;
         }
 
-        .month-actions strong {
+        .mark {
+          width: 48px;
+          height: 48px;
+          display: grid;
+          place-items: center;
+          border-radius: 14px;
+          background: #2563eb;
+          font-size: 30px;
+          font-weight: 950;
+          font-style: italic;
+        }
+
+        .brandBlock strong {
+          display: block;
+          font-size: 28px;
+          font-style: italic;
+          letter-spacing: -0.07em;
+          line-height: 0.9;
+        }
+
+        .brandBlock span,
+        .sideHero span {
+          display: inline-flex;
+          margin-top: 7px;
+          padding: 4px 8px;
+          border-radius: 7px;
+          background: #2563eb;
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+        }
+
+        .sideHero {
+          padding-top: 24px;
+        }
+
+        .sideHero h1 {
+          margin: 18px 0 12px;
+          font-size: 36px;
+          line-height: 0.95;
+          letter-spacing: -0.065em;
+        }
+
+        .sideHero p {
+          margin: 0;
+          color: #94a3b8;
+          line-height: 1.6;
+        }
+
+        .sideStats {
+          display: grid;
+          gap: 10px;
+          margin-top: auto;
+        }
+
+        .sideStat {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 16px;
+          border-radius: 18px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .sideStat svg {
+          color: #93c5fd;
+        }
+
+        .sideStat strong {
+          display: block;
+          font-size: 26px;
+        }
+
+        .sideStat span {
+          color: #94a3b8;
+          font-size: 12px;
+          font-weight: 850;
+        }
+
+        .availabilityContent {
+          padding: 30px;
+          overflow: auto;
+        }
+
+        .contentHeader {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 24px;
+          margin-bottom: 20px;
+        }
+
+        .eyebrow {
+          display: inline-flex;
+          margin-bottom: 10px;
+          padding: 7px 11px;
+          border-radius: 999px;
+          background: #dbeafe;
+          color: #2563eb;
+          font-size: 12px;
+          font-weight: 950;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .contentHeader h2 {
+          margin: 0;
+          font-size: clamp(38px, 5vw, 58px);
+          line-height: 1;
+          letter-spacing: -0.07em;
+        }
+
+        .contentHeader p {
+          margin: 12px 0 0;
+          color: #64748b;
+          line-height: 1.6;
+        }
+
+        .saveTop,
+        .saveBottom {
+          min-height: 48px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 9px;
+          border-radius: 999px;
+          background: #2563eb;
+          color: white;
+          font-weight: 950;
+          box-shadow: 0 16px 34px rgba(37, 99, 235, 0.22);
+        }
+
+        .saveTop {
+          padding: 0 18px;
+          flex: 0 0 auto;
+        }
+
+        .success {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 18px;
+          padding: 14px 16px;
+          border-radius: 18px;
+          background: #dcfce7;
+          color: #166534;
+          border: 1px solid #bbf7d0;
+          font-weight: 900;
+        }
+
+        .availabilityGrid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+          gap: 18px;
+        }
+
+        .calendarPanel,
+        .zonesPanel {
+          padding: 24px;
+          border-radius: 26px;
+          background: white;
+          border: 1px solid #dbe3ee;
+          box-shadow: 0 16px 48px rgba(15, 23, 42, 0.06);
+        }
+
+        .panelTitle {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 18px;
+          margin-bottom: 20px;
+        }
+
+        .panelTitle h3 {
+          margin: 0;
+          font-size: 24px;
+          letter-spacing: -0.04em;
+        }
+
+        .panelTitle span {
+          color: #64748b;
+          font-size: 13px;
+          font-weight: 800;
+        }
+
+        .monthActions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .monthActions strong {
           min-width: 170px;
           text-align: center;
           text-transform: capitalize;
         }
 
-        .month-actions button,
-        .select-row button {
-          border: none;
+        .monthActions button {
+          width: 40px;
+          height: 40px;
+          display: grid;
+          place-items: center;
           border-radius: 999px;
-          background: linear-gradient(180deg, #2563eb, #1d4ed8);
-          color: white;
-          font-weight: 900;
-          cursor: pointer;
-          padding: 10px 14px;
+          background: #dbeafe;
+          color: #2563eb;
         }
 
         .calendar {
@@ -461,53 +633,66 @@ export default function DriverAvailability() {
           gap: 10px;
         }
 
-        .week-day {
+        .weekDay {
           text-align: center;
-          color: #94a3b8;
+          color: #64748b;
           font-size: 13px;
-          font-weight: 900;
+          font-weight: 950;
           padding-bottom: 4px;
         }
 
         .day,
-        .empty-day {
-          min-height: 74px;
+        .emptyDay {
+          min-height: 72px;
           border-radius: 18px;
         }
 
         .day {
-          border: 1px solid rgba(255,255,255,0.08);
-          background: rgba(15,23,42,0.75);
-          color: white;
-          cursor: pointer;
-          font-weight: 900;
           display: flex;
           align-items: flex-start;
-          justify-content: flex-start;
+          justify-content: space-between;
           padding: 12px;
+          border: 1px solid #e5eaf2;
+          background: #f8fafc;
+          color: #0f172a;
+          font-weight: 950;
         }
 
         .day.selected {
-          background: linear-gradient(180deg, #16a34a, #15803d);
-          border: none;
+          background: #2563eb;
+          border-color: #2563eb;
+          color: white;
+          box-shadow: 0 14px 28px rgba(37, 99, 235, 0.22);
         }
 
-        .select-row {
+        .selectRow {
           display: grid;
           grid-template-columns: 1fr auto;
-          gap: 12px;
-          margin-top: 16px;
+          gap: 10px;
         }
 
         select {
           width: 100%;
-          padding: 14px;
-          border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.1);
-          background: rgba(15,23,42,0.9);
-          color: white;
-          font-size: 15px;
+          border-radius: 15px;
+          border: 1px solid #dbe3ee;
+          background: #f8fafc;
+          color: #0f172a;
+          padding: 14px 15px;
           outline: none;
+        }
+
+        select:focus {
+          border-color: #93c5fd;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+          background: white;
+        }
+
+        .selectRow button {
+          border-radius: 15px;
+          padding: 0 16px;
+          background: #2563eb;
+          color: white;
+          font-weight: 950;
         }
 
         .chips {
@@ -518,59 +703,86 @@ export default function DriverAvailability() {
         }
 
         .chip {
-          border: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
           border-radius: 999px;
-          padding: 10px 14px;
-          background: rgba(37,99,235,0.22);
-          color: #bfdbfe;
-          font-weight: 800;
-          cursor: pointer;
-        }
-
-        .empty-text {
-          color: #94a3b8;
-          margin: 0;
-        }
-
-        .save {
-          width: 100%;
-          margin-top: 24px;
-          padding: 16px;
-          border-radius: 999px;
-          border: none;
-          background: linear-gradient(180deg, #2563eb, #1d4ed8);
-          color: white;
+          padding: 10px 13px;
+          background: #dbeafe;
+          color: #2563eb;
           font-weight: 900;
-          font-size: 16px;
-          cursor: pointer;
         }
 
-        @media (max-width: 700px) {
-          .page {
-            padding: 18px 12px 34px;
+        .emptyState {
+          width: 100%;
+          min-height: 130px;
+          display: grid;
+          place-items: center;
+          text-align: center;
+          padding: 22px;
+          border-radius: 20px;
+          border: 1px dashed #cbd5e1;
+          color: #64748b;
+        }
+
+        .emptyState svg {
+          color: #2563eb;
+        }
+
+        .emptyState p {
+          margin: 8px 0 0;
+        }
+
+        .saveBottom {
+          width: 100%;
+          margin-top: 18px;
+          padding: 0 18px;
+        }
+
+        @media (max-width: 1040px) {
+          .availabilityPage,
+          .availabilityGrid {
+            grid-template-columns: 1fr;
+          }
+
+          .availabilitySidebar {
+            min-height: auto;
+          }
+
+          .sideStats {
+            margin-top: 0;
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 720px) {
+          .availabilityContent,
+          .availabilitySidebar {
+            padding: 18px;
+          }
+
+          .contentHeader,
+          .panelTitle {
             align-items: flex-start;
-          }
-
-          .card {
-            padding: 22px;
-            border-radius: 22px;
-          }
-
-          h1 {
-            font-size: 34px;
-          }
-
-          .section-top {
             flex-direction: column;
-            align-items: flex-start;
           }
 
-          .month-actions {
+          .saveTop,
+          .saveBottom {
+            width: 100%;
+          }
+
+          .sideStats,
+          .selectRow {
+            grid-template-columns: 1fr;
+          }
+
+          .monthActions {
             width: 100%;
             justify-content: space-between;
           }
 
-          .month-actions strong {
+          .monthActions strong {
             min-width: auto;
           }
 
@@ -579,7 +791,7 @@ export default function DriverAvailability() {
           }
 
           .day,
-          .empty-day {
+          .emptyDay {
             min-height: 52px;
             border-radius: 13px;
           }
@@ -588,12 +800,47 @@ export default function DriverAvailability() {
             padding: 8px;
             font-size: 13px;
           }
-
-          .select-row {
-            grid-template-columns: 1fr;
-          }
         }
       `}</style>
     </main>
   );
+}
+
+function Stat({ icon: Icon, value, label }) {
+  return (
+    <div className="sideStat">
+      <Icon size={22} />
+      <div>
+        <strong>{value}</strong>
+        <span>{label}</span>
+      </div>
+    </div>
+  );
+}
+
+function formatDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getMonthDays(currentMonth) {
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const days = [];
+  const startOffset = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+
+  for (let index = 0; index < startOffset; index++) {
+    days.push(null);
+  }
+
+  for (let day = 1; day <= lastDay.getDate(); day++) {
+    days.push(new Date(year, month, day));
+  }
+
+  return days;
 }

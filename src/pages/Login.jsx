@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  ArrowRight,
+  Bus,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+  Users,
+  X,
+} from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { X } from "lucide-react";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -10,12 +18,13 @@ export default function Login() {
     email: "",
     password: "",
   });
+  const [loading, setLoading] = useState(false);
 
   function updateField(field, value) {
-    setForm({
-      ...form,
+    setForm((prev) => ({
+      ...prev,
       [field]: value,
-    });
+    }));
   }
 
   async function resetPassword() {
@@ -24,13 +33,10 @@ export default function Login() {
       return;
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      form.email,
-      {
-        redirectTo:
-          "https://shiftly-10rnms0nh-jeremypelosos-projects.vercel.app/update-password",
-      }
-    );
+    const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
+      redirectTo:
+        "https://shiftly-10rnms0nh-jeremypelosos-projects.vercel.app/update-password",
+    });
 
     if (error) {
       console.error(error);
@@ -42,276 +48,474 @@ export default function Login() {
   }
 
   async function loginUser() {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: form.email,
-      password: form.password,
-    });
+    setLoading(true);
 
-    if (error) {
-      console.error(error);
-      alert(error.message);
-      return;
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: form.email,
+        password: form.password,
+      });
+
+      if (error) {
+        console.error(error);
+        alert(error.message);
+        return;
+      }
+
+      const user = data.user;
+
+      if (!user) {
+        alert("Utilisateur introuvable");
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) {
+        console.error(profileError);
+        alert("Erreur récupération profil");
+        return;
+      }
+
+      if (profile?.is_suspended === true) {
+        await supabase.auth.signOut();
+        alert("Votre compte est suspendu. Contactez l'administrateur.");
+        navigate("/login");
+        return;
+      }
+
+      if (profile?.is_admin === true) {
+        navigate("/admin");
+        return;
+      }
+
+      if (profile?.role === "driver") {
+        navigate("/driver");
+        return;
+      }
+
+      if (profile?.role === "company") {
+        navigate("/company");
+      }
+    } finally {
+      setLoading(false);
     }
+  }
 
-    const user = data.user;
-
-    if (!user) {
-      alert("Utilisateur introuvable");
-      return;
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError) {
-      console.error(profileError);
-      alert("Erreur récupération profil");
-      return;
-    }
-
-    if (profile?.is_suspended === true) {
-  await supabase.auth.signOut();
-
-  alert(
-    "Votre compte est suspendu. Contactez l’administrateur."
-  );
-
-  navigate("/login");
-
-  return;
-}
-
-if (profile?.is_admin === true) {
-  navigate("/admin");
-  return;
-}
-
-if (profile?.role === "driver") {
-  navigate("/driver");
-  return;
-}
-
-if (profile?.role === "company") {
-  navigate("/company");
-  return;
-}
-}
   return (
     <main
-      style={styles.page}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          loginUser();
-        }
+      className="loginPage"
+      onKeyDown={(event) => {
+        if (event.key === "Enter") loginUser();
       }}
     >
-      <div style={styles.glowOne}></div>
-      <div style={styles.glowTwo}></div>
+      <button className="closeButton" onClick={() => navigate("/")}>
+        <X size={19} />
+      </button>
 
-      <div style={styles.card}>
+      <section className="loginBrandPanel">
+        <div className="brand">
+          <div className="mark">S</div>
+          <div className="brandText">
+            <strong>Shiftly</strong>
+            <span>Marketplace</span>
+          </div>
+        </div>
 
-        <button
-  style={styles.closeButton}
-  onClick={() => navigate("/")}
->
-  <X size={18} />
-</button>
+        <div className="brandCopy">
+          <span>Connexion sécurisée</span>
+          <h1>Retrouvez vos missions, vos conducteurs et vos échanges.</h1>
+          <p>
+            Un seul espace pour gérer les missions transport, les candidatures et
+            les remplacements en temps réel.
+          </p>
+        </div>
 
-        <div style={styles.logo}>Shiftly</div>
+        <div className="benefits">
+          <Benefit icon={Bus} title="Missions en temps réel" />
+          <Benefit icon={Users} title="Profils vérifiés" />
+          <Benefit icon={ShieldCheck} title="Espace sécurisé" />
+        </div>
+      </section>
 
-        <h1 style={styles.title}>Connexion</h1>
+      <section className="loginCard">
+        <div className="cardHeader">
+          <span className="cardEyebrow">Bienvenue</span>
+          <h2>Connexion</h2>
+          <p>Connectez-vous à votre espace conducteur ou entreprise.</p>
+        </div>
 
-        <p style={styles.subtitle}>
-          Connectez-vous à votre espace conducteur ou entreprise.
-        </p>
+        <div className="formStack">
+          <label className="field">
+            <span>Adresse email</span>
+            <div className="inputWrap">
+              <Mail size={19} />
+              <input
+                type="email"
+                placeholder="vous@email.fr"
+                value={form.email}
+                onChange={(event) => updateField("email", event.target.value)}
+                autoFocus
+              />
+            </div>
+          </label>
 
-        <input
-          type="email"
-          placeholder="Adresse email"
-          style={styles.input}
-          value={form.email}
-          onChange={(e) => updateField("email", e.target.value)}
-          autoFocus
-        />
+          <label className="field">
+            <span>Mot de passe</span>
+            <div className="inputWrap">
+              <LockKeyhole size={19} />
+              <input
+                type="password"
+                placeholder="Votre mot de passe"
+                value={form.password}
+                onChange={(event) => updateField("password", event.target.value)}
+              />
+            </div>
+          </label>
+        </div>
 
-        <input
-          type="password"
-          placeholder="Mot de passe"
-          style={styles.input}
-          value={form.password}
-          onChange={(e) => updateField("password", e.target.value)}
-        />
-
-        <p style={styles.forgot} onClick={resetPassword}>
+        <button className="forgotButton" onClick={resetPassword}>
           Mot de passe oublié ?
-        </p>
-
-        <button style={styles.button} onClick={loginUser}>
-          Se connecter
         </button>
 
-        <p style={styles.bottom}>
+        <button className="submitButton" disabled={loading} onClick={loginUser}>
+          {loading ? "Connexion..." : "Se connecter"}
+          <ArrowRight size={18} />
+        </button>
+
+        <p className="bottomText">
           Pas encore de compte ?{" "}
-          <span
-            style={styles.link}
-            onClick={() => navigate("/register")}
-          >
-            Créer un compte
-          </span>
+          <button onClick={() => navigate("/register")}>Créer un compte</button>
         </p>
-      </div>
+      </section>
+
+      <style>{`
+        .loginPage {
+          min-height: 100svh;
+          display: grid;
+          grid-template-columns: minmax(0, 1.05fr) minmax(380px, 0.72fr);
+          gap: clamp(28px, 6vw, 80px);
+          align-items: center;
+          padding: 42px clamp(24px, 5vw, 72px);
+          background:
+            radial-gradient(circle at 14% 14%, rgba(37, 99, 235, 0.14), transparent 30%),
+            radial-gradient(circle at 90% 12%, rgba(15, 23, 42, 0.08), transparent 24%),
+            #f8fafc;
+          color: #0f172a;
+          font-family: Inter, system-ui, Arial, sans-serif;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .loginPage button,
+        .loginPage input {
+          font: inherit;
+        }
+
+        .loginPage button {
+          border: 0;
+          cursor: pointer;
+        }
+
+        .loginPage button:disabled {
+          opacity: 0.68;
+          cursor: not-allowed;
+        }
+
+        .closeButton {
+          position: fixed;
+          top: 24px;
+          right: 24px;
+          z-index: 5;
+          width: 42px;
+          height: 42px;
+          display: grid;
+          place-items: center;
+          border-radius: 999px;
+          background: white;
+          color: #0f172a;
+          border: 1px solid #dbe3ee !important;
+          box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+        }
+
+        .loginBrandPanel {
+          max-width: 760px;
+        }
+
+        .brand {
+          display: flex;
+          align-items: center;
+          gap: 15px;
+          margin-bottom: 70px;
+        }
+
+        .mark {
+          width: 62px;
+          height: 62px;
+          display: grid;
+          place-items: center;
+          border-radius: 18px;
+          background: linear-gradient(135deg, #2563eb, #0f172a);
+          color: white;
+          font-size: 40px;
+          font-weight: 950;
+          font-style: italic;
+          box-shadow: 0 18px 38px rgba(37, 99, 235, 0.25);
+        }
+
+        .brandText {
+          display: flex;
+          align-items: baseline;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .brand strong {
+          display: block;
+          font-size: 48px;
+          line-height: 0.9;
+          font-weight: 950;
+          font-style: italic;
+          letter-spacing: -0.08em;
+        }
+
+        .brand span {
+          display: inline-flex;
+          padding: 6px 10px;
+          border-radius: 8px;
+          background: #2563eb;
+          color: white;
+          font-size: 11px;
+          font-weight: 950;
+          letter-spacing: 0.09em;
+          text-transform: uppercase;
+        }
+
+        .brandCopy span,
+        .cardEyebrow {
+          display: inline-flex;
+          padding: 8px 12px;
+          border-radius: 999px;
+          background: #dbeafe;
+          color: #2563eb;
+          font-size: 12px;
+          font-weight: 950;
+          letter-spacing: 0.09em;
+          text-transform: uppercase;
+        }
+
+        .brandCopy h1 {
+          max-width: 760px;
+          margin: 22px 0 0;
+          font-size: clamp(46px, 6vw, 76px);
+          line-height: 0.93;
+          letter-spacing: -0.08em;
+        }
+
+        .brandCopy p {
+          max-width: 620px;
+          margin: 24px 0 0;
+          color: #475569;
+          font-size: 18px;
+          line-height: 1.7;
+        }
+
+        .benefits {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 13px;
+          margin-top: 42px;
+        }
+
+        .benefit {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 16px;
+          border-radius: 18px;
+          background: white;
+          border: 1px solid #dbe3ee;
+          box-shadow: 0 16px 42px rgba(15, 23, 42, 0.05);
+          font-weight: 850;
+        }
+
+        .benefitIcon {
+          width: 40px;
+          height: 40px;
+          display: grid;
+          place-items: center;
+          border-radius: 13px;
+          background: #dbeafe;
+          color: #2563eb;
+          flex: 0 0 auto;
+        }
+
+        .loginCard {
+          width: 100%;
+          max-width: 470px;
+          justify-self: end;
+          padding: 32px;
+          border-radius: 30px;
+          background: white;
+          border: 1px solid #dbe3ee;
+          box-shadow: 0 28px 80px rgba(15, 23, 42, 0.12);
+        }
+
+        .cardHeader h2 {
+          margin: 16px 0 8px;
+          font-size: 42px;
+          line-height: 1;
+          letter-spacing: -0.065em;
+        }
+
+        .cardHeader p {
+          margin: 0 0 26px;
+          color: #64748b;
+          line-height: 1.55;
+        }
+
+        .formStack {
+          display: grid;
+          gap: 15px;
+        }
+
+        .field {
+          display: grid;
+          gap: 8px;
+        }
+
+        .field > span {
+          color: #334155;
+          font-size: 13px;
+          font-weight: 900;
+        }
+
+        .inputWrap {
+          display: flex;
+          align-items: center;
+          gap: 11px;
+          min-height: 54px;
+          border-radius: 16px;
+          border: 1px solid #dbe3ee;
+          background: #f8fafc;
+          padding: 0 15px;
+          color: #2563eb;
+        }
+
+        .inputWrap:focus-within {
+          background: white;
+          border-color: #93c5fd;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+
+        .inputWrap input {
+          width: 100%;
+          border: 0;
+          outline: 0;
+          background: transparent;
+          color: #0f172a;
+        }
+
+        .forgotButton {
+          display: block;
+          margin: 14px 0 18px auto;
+          background: transparent;
+          color: #2563eb;
+          font-size: 14px;
+          font-weight: 900;
+        }
+
+        .submitButton {
+          width: 100%;
+          min-height: 54px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 9px;
+          border-radius: 999px;
+          background: #2563eb;
+          color: white;
+          font-weight: 950;
+          box-shadow: 0 18px 38px rgba(37, 99, 235, 0.24);
+        }
+
+        .bottomText {
+          margin: 22px 0 0;
+          text-align: center;
+          color: #64748b;
+          font-size: 14px;
+        }
+
+        .bottomText button {
+          background: transparent;
+          color: #2563eb;
+          font-weight: 950;
+        }
+
+        @media (max-width: 980px) {
+          .loginPage {
+            grid-template-columns: 1fr;
+            overflow: auto;
+          }
+
+          .brand {
+            margin-bottom: 34px;
+          }
+
+          .loginCard {
+            max-width: none;
+            justify-self: stretch;
+          }
+
+          .benefits {
+            grid-template-columns: 1fr;
+            margin-top: 28px;
+          }
+        }
+
+        @media (max-width: 560px) {
+          .loginPage {
+            padding: 24px 18px;
+          }
+
+          .closeButton {
+            top: 16px;
+            right: 16px;
+          }
+
+          .brand strong {
+            font-size: 38px;
+          }
+
+          .brandCopy h1 {
+            font-size: 44px;
+          }
+
+          .brandCopy p {
+            font-size: 15px;
+          }
+
+          .loginCard {
+            padding: 24px;
+            border-radius: 24px;
+          }
+        }
+      `}</style>
     </main>
   );
 }
 
-const styles = {
-  page: {
-    width: "100%",
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    background: `
-      radial-gradient(circle at top left, rgba(251,191,36,0.1), transparent 34%),
-      radial-gradient(circle at bottom right, rgba(56,189,248,0.1), transparent 34%),
-      linear-gradient(135deg, #0f172a 0%, #162033 52%, #1f2937 100%)
-    `,
-    fontFamily: "Inter, Arial, sans-serif",
-    padding: "24px",
-    boxSizing: "border-box",
-    overflow: "hidden",
-    position: "relative",
-  },
-
-  glowOne: {
-    position: "absolute",
-    width: "360px",
-    height: "360px",
-    borderRadius: "999px",
-    background: "#fbbf24",
-    opacity: 0.12,
-    filter: "blur(80px)",
-    top: "-120px",
-    left: "-120px",
-  },
-
-closeButton: {
-  position: "absolute",
-  top: "24px",
-  right: "24px",
-  width: "38px",
-  height: "38px",
-  borderRadius: "999px",
-  border: "1px solid rgba(255,255,255,0.08)",
-  background: "rgba(255,255,255,0.06)",
-  color: "#cbd5e1",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  cursor: "pointer",
-  backdropFilter: "blur(10px)",
-  zIndex: 3,
-},
-
-  glowTwo: {
-    position: "absolute",
-    width: "320px",
-    height: "320px",
-    borderRadius: "999px",
-    background: "#2563eb",
-    opacity: 0.12,
-    filter: "blur(80px)",
-    bottom: "-120px",
-    right: "-120px",
-  },
-
-  card: {
-    position: "relative",
-    zIndex: 2,
-    width: "100%",
-    maxWidth: "420px",
-    background: "rgba(255,255,255,0.08)",
-    border: "1px solid rgba(255,255,255,0.12)",
-    backdropFilter: "blur(24px)",
-    borderRadius: "32px",
-    padding: "36px",
-    boxSizing: "border-box",
-    color: "white",
-    boxShadow: "0 30px 80px rgba(0,0,0,0.35)",
-  },
-
-  logo: {
-    fontSize: "28px",
-    fontWeight: "900",
-    marginBottom: "12px",
-  },
-
-  title: {
-    margin: 0,
-    fontSize: "42px",
-    fontWeight: "900",
-    letterSpacing: "-0.05em",
-  },
-
-  subtitle: {
-    color: "#94a3b8",
-    marginTop: "12px",
-    lineHeight: "1.5",
-    marginBottom: "28px",
-  },
-
-  input: {
-    width: "100%",
-    padding: "16px",
-    marginBottom: "14px",
-    borderRadius: "16px",
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(15,23,42,0.9)",
-    color: "white",
-    fontSize: "16px",
-    outline: "none",
-    boxSizing: "border-box",
-  },
-
-  forgot: {
-    marginTop: "-4px",
-    marginBottom: "16px",
-    textAlign: "right",
-    color: "#dbeafe",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: "700",
-  },
-
-  button: {
-    width: "100%",
-    marginTop: "10px",
-    padding: "16px",
-    borderRadius: "999px",
-    border: "none",
-    background:
-  "linear-gradient(180deg, #2563eb, #1d4ed8)",
-color: "white",
-boxShadow:
-  "0 18px 45px rgba(37,99,235,0.28)",
-    fontWeight: "900",
-    fontSize: "16px",
-    cursor: "pointer",
-  },
-
-  bottom: {
-    marginTop: "24px",
-    textAlign: "center",
-    color: "#94a3b8",
-    fontSize: "14px",
-  },
-
-  link: {
-  color: "#dbeafe",
-  fontWeight: "700",
-  cursor: "pointer",
-},
-};
+function Benefit({ icon: Icon, title }) {
+  return (
+    <div className="benefit">
+      <div className="benefitIcon">
+        <Icon size={21} />
+      </div>
+      <span>{title}</span>
+    </div>
+  );
+}
