@@ -40,6 +40,7 @@ const missionTypes = [
   "Navette événementielle",
   "Transfert aéroport",
   "Remplacement urgent",
+  "Convoyage de véhicule",
 ];
 const statusOptions = ["Ouverte", "Pourvue", "Terminée", "Annulée"];
 

@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { sendAdminNotificationEmail } from "../lib/notifications";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -74,6 +75,14 @@ export default function Register() {
         alert(profileError.message);
         return;
       }
+
+      await sendAdminNotificationEmail({
+        title: "Nouvelle inscription Shiftly",
+        message: `${form.fullName || form.email} vient de créer un compte ${
+          form.role === "company" ? "entreprise" : "conducteur"
+        } avec l'adresse ${form.email}.`,
+        type: "new_signup",
+      });
 
       setSuccessModal(true);
     } finally {
@@ -221,8 +230,7 @@ export default function Register() {
           gap: clamp(28px, 6vw, 80px);
           align-items: center;
           padding: 42px clamp(24px, 5vw, 72px);
-          background:
-            radial-gradient(circle at 14% 14%, rgba(37, 99, 235, 0.14), transparent 30%),
+          background: radial-gradient(circle at 14% 14%, rgba(37, 99, 235, 0.14), transparent 30%),
             radial-gradient(circle at 90% 12%, rgba(15, 23, 42, 0.08), transparent 24%),
             #f8fafc;
           color: #0f172a;

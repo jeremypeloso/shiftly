@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser } from "../lib/auth";
+import { sendNotificationEmail } from "../lib/notifications";
+import { sendAdminNotificationEmail } from "../lib/notifications";
 
 const acceptedStatuses = ["Acceptée", "AcceptÃ©e"];
 
@@ -42,10 +44,21 @@ export default function CompanyDashboard() {
   const [missionSearch, setMissionSearch] = useState("");
   const [missionFilter, setMissionFilter] = useState("all");
   const [popup, setPopup] = useState(null);
+  const [compactCalendar, setCompactCalendar] = useState(false);
 
   const actionLockRef = useRef(false);
 
   const unreadCount = notifications.filter((notification) => !notification.is_read).length;
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 760px)");
+
+    const updateCalendarMode = () => setCompactCalendar(mediaQuery.matches);
+    updateCalendarMode();
+
+    mediaQuery.addEventListener("change", updateCalendarMode);
+    return () => mediaQuery.removeEventListener("change", updateCalendarMode);
+  }, []);
 
   const stats = useMemo(() => {
     const open = createdMissions.filter((mission) => mission.status === "Ouverte").length;
@@ -71,6 +84,16 @@ export default function CompanyDashboard() {
     if (missionFilter === "completed") return matchesSearch && status === "completed";
     return matchesSearch;
   });
+
+
+  const calendarMissions = useMemo(() => {
+    return createdMissions.filter((mission) => {
+      const status = statusKey(mission.status);
+      const text = normalize(`${mission.status || ""} ${mission.title || ""} ${mission.pickup || ""} ${mission.dropoff || ""}`);
+
+      return status !== "cancelled" && !text.includes("annul");
+    });
+  }, [createdMissions]);
 
   useEffect(() => {
     if (!selectedMission) return;
@@ -259,14 +282,20 @@ export default function CompanyDashboard() {
       return;
     }
 
-    await supabase.from("notifications").insert([
-      {
-        user_id: driver.id,
-        title: "Nouvelle mission proposée",
-        message: `${companyProfile?.companyName || "Une entreprise"} vous propose une mission : ${mission.title}`,
-        type: "mission_invitation",
-      },
-    ]);
+    const notification = {
+  user_id: driver.id,
+  title: "Nouvelle mission proposée",
+  message: `${companyProfile?.companyName || "Une entreprise"} vous propose une mission : ${mission.title}`,
+  type: "mission_invitation",
+};
+
+await supabase.from("notifications").insert([notification]);
+await sendNotificationEmail({
+  userId: notification.user_id,
+  title: notification.title,
+  message: notification.message,
+  type: notification.type,
+});
 
     setPopup({
       type: "success",
@@ -304,6 +333,21 @@ export default function CompanyDashboard() {
       alert("Erreur mise à jour candidature");
       return;
     }
+
+    const notification = {
+  user_id: application.driver.id,
+  title: "Candidature acceptée",
+  message: `Votre candidature a été acceptée pour la mission : ${selectedMission?.title || "Mission"}`,
+  type: "application_accepted",
+};
+
+await supabase.from("notifications").insert([notification]);
+await sendNotificationEmail({
+  userId: notification.user_id,
+  title: notification.title,
+  message: notification.message,
+  type: notification.type,
+});
 
     setPopup({
       type: "success",
@@ -515,23 +559,26 @@ export default function CompanyDashboard() {
             <div className="panelHeader">
               <div>
                 <h2>Agenda des missions</h2>
-                <span>{createdMissions.length} mission(s)</span>
+                <span>{calendarMissions.length} mission(s)</span>
               </div>
             </div>
 
             <div className="calendarCard">
               <FullCalendar
+                key={`${compactCalendar ? "compact" : "desktop"}-${calendarMissions.map((mission) => `${mission.id}:${mission.status}`).join("|")}`}
                 plugins={[dayGridPlugin, interactionPlugin]}
-                initialView="dayGridMonth"
+                initialView={compactCalendar ? "dayGridWeek" : "dayGridMonth"}
                 locale="fr"
                 height="auto"
+                aspectRatio={compactCalendar ? 0.95 : 1.6}
+                dayMaxEventRows={compactCalendar ? 2 : 3}
                 headerToolbar={{
                   left: "prev,next",
                   center: "title",
-                  right: "today",
+                  right: compactCalendar ? "" : "today",
                 }}
                 buttonText={{ today: "Aujourd'hui" }}
-                events={createdMissions.map((mission) => ({
+                events={calendarMissions.map((mission) => ({
                   title: `${mission.status} · ${mission.title}`,
                   start: mission.start,
                   end: mission.end,
@@ -976,7 +1023,7 @@ function CompanyStyles() {
       }
 
       .logoutButton {
-        margin-top: auto;
+        margin-top: 8px;
         background: rgba(239, 68, 68, 0.1);
         color: #fecaca;
       }
@@ -1163,10 +1210,13 @@ function CompanyStyles() {
       }
 
       .calendarCard {
+        width: 100%;
         overflow: hidden;
       }
 
       .fc {
+        width: 100%;
+        min-width: 0;
         font-family: Inter, system-ui, Arial, sans-serif;
       }
 
@@ -1660,11 +1710,59 @@ function CompanyStyles() {
         }
 
         .calendarPanel {
-          overflow-x: auto;
+          overflow: hidden;
+        }
+
+        .calendarCard {
+          width: 100%;
         }
 
         .fc {
-          min-width: 680px;
+          width: 100%;
+          min-width: 0;
+        }
+
+        .fc .fc-toolbar {
+          gap: 10px;
+          align-items: center;
+        }
+
+        .fc .fc-toolbar-title {
+          font-size: 17px;
+          line-height: 1.2;
+          text-align: center;
+        }
+
+        .fc .fc-button {
+          padding: 7px 10px !important;
+          font-size: 12px !important;
+        }
+
+        .fc .fc-daygrid-day-number {
+          padding: 5px;
+          font-size: 12px;
+        }
+
+        .fc .fc-col-header-cell-cushion {
+          font-size: 11px;
+          padding: 6px 2px;
+        }
+
+        .fc .fc-event {
+          max-width: 100%;
+          padding: 2px 5px !important;
+          font-size: 11px !important;
+          line-height: 1.2;
+          white-space: normal;
+        }
+
+        .fc .fc-event-title {
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .fc .fc-daygrid-day-frame {
+          min-height: 72px;
         }
       }
     `}</style>
@@ -1713,6 +1811,17 @@ function statusKey(status) {
   if (clean === "acceptee" || value.includes("accept")) return "accepted";
   if (clean === "refusee" || value.includes("refus")) return "refused";
   return clean;
+}
+function isCancelledMission(mission) {
+  const status = statusKey(mission?.status);
+  const text = normalize(`
+    ${mission?.status || ""}
+    ${mission?.title || ""}
+    ${mission?.pickup || ""}
+    ${mission?.dropoff || ""}
+  `);
+
+  return status === "cancelled" || text.includes("annul");
 }
 
 function dedupeApplications(applications) {

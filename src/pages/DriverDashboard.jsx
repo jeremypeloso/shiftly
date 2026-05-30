@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser } from "../lib/auth";
+import { sendNotificationEmail } from "../lib/notifications";
 
 const acceptedStatuses = ["Acceptée", "AcceptÃ©e"];
 const refusedStatuses = ["Refusée", "RefusÃ©e"];
@@ -353,14 +354,20 @@ export default function DriverDashboard() {
         return;
       }
 
-      await supabase.from("notifications").insert([
-        {
-          user_id: mission.companyId,
-          title: "Nouvelle candidature",
-          message: `${driverProfile.name || "Un conducteur"} a postulé à votre mission : ${mission.title}`,
-          type: "application",
-        },
-      ]);
+      const notification = {
+  user_id: mission.companyId,
+  title: "Nouvelle candidature",
+  message: `${driverProfile.name || "Un conducteur"} a postulé à votre mission : ${mission.title}`,
+  type: "application",
+};
+
+await supabase.from("notifications").insert([notification]);
+await sendNotificationEmail({
+  userId: notification.user_id,
+  title: notification.title,
+  message: notification.message,
+  type: notification.type,
+});
 
       await loadDriverData();
       showApplicationNotice({
@@ -717,6 +724,7 @@ export default function DriverDashboard() {
           background: #f8fafc;
           color: #0f172a;
           font-family: Inter, system-ui, Arial, sans-serif;
+          overflow-x: hidden;
         }
 
         .driverShell button {
@@ -818,7 +826,7 @@ export default function DriverDashboard() {
         }
 
         .sidebarLogout {
-          margin-top: auto;
+          margin-top: 8px;
           width: 100%;
           color: #fecaca;
           background: rgba(239, 68, 68, 0.1);
@@ -1104,6 +1112,7 @@ export default function DriverDashboard() {
 
         .missionBody,
         .inviteRow > div:nth-child(2) {
+          min-width: 0;
           display: flex;
           flex-direction: column;
           justify-content: center;
@@ -1133,12 +1142,14 @@ export default function DriverDashboard() {
         .inviteRow strong {
           display: block;
           margin-bottom: 4px;
+          overflow-wrap: anywhere;
         }
 
         .missionRow span,
         .inviteRow span {
           color: #64748b;
           font-size: 13px;
+          overflow-wrap: anywhere;
         }
 
         .missionCompany {
@@ -1410,17 +1421,19 @@ export default function DriverDashboard() {
           }
 
           .driverNav {
-            display: flex;
-            overflow-x: auto;
-            padding-bottom: 8px;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
           }
 
           .driverNav button {
-            white-space: nowrap;
+            min-width: 0;
+            justify-content: center;
+            text-align: center;
           }
 
           .sidebarLogout {
-            display: none;
+            margin-top: 10px;
           }
 
           .dashboardGrid,
@@ -1430,22 +1443,136 @@ export default function DriverDashboard() {
         }
 
         @media (max-width: 680px) {
+          .driverShell {
+            display: block;
+          }
+
+          .driverSidebar {
+            padding: 16px;
+            gap: 14px;
+          }
+
+          .driverBrand {
+            margin-bottom: 10px;
+          }
+
+          .driverMark {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            font-size: 26px;
+          }
+
+          .driverBrand strong {
+            font-size: 24px;
+          }
+
+          .driverNav {
+            grid-template-columns: 1fr;
+          }
+
+          .driverNav button {
+            min-height: 44px;
+            padding: 10px;
+            border-radius: 12px;
+            justify-content: flex-start;
+            font-size: 13px;
+            line-height: 1.15;
+          }
+
+          .driverNav button svg {
+            flex: 0 0 auto;
+          }
+
+          .driverNav em {
+            min-width: 22px;
+            height: 22px;
+            font-size: 11px;
+          }
+
           .driverContent {
-            padding: 18px;
+            padding: 16px;
           }
 
           .driverTopbar,
           .panelTitle {
             align-items: flex-start;
             flex-direction: column;
+            gap: 12px;
+          }
+
+          .driverTopbar {
+            margin-bottom: 16px;
+          }
+
+          .driverTopbar h1 {
+            font-size: 25px;
+            letter-spacing: -0.035em;
+          }
+
+          .driverTopbar p {
+            font-size: 14px;
+            line-height: 1.45;
           }
 
           .topActions {
             width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 44px;
+            gap: 10px;
           }
 
           .scorePill {
-            flex: 1;
+            min-width: 0;
+            justify-content: center;
+            padding: 0 12px;
+            font-size: 13px;
+          }
+
+          .recommendationCard {
+            gap: 18px;
+            padding: 20px;
+            border-radius: 22px;
+          }
+
+          .recommendationCard h2 {
+            margin-top: 12px;
+            font-size: 26px;
+            line-height: 1.05;
+            letter-spacing: -0.035em;
+          }
+
+          .recommendationCard p {
+            margin-bottom: 0;
+            font-size: 14px;
+            line-height: 1.45;
+          }
+
+          .missionMeta {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            margin-top: 16px;
+          }
+
+          .missionMeta span {
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 14px;
+          }
+
+          .priceBox {
+            padding: 16px;
+            border-radius: 18px;
+          }
+
+          .priceBox strong {
+            margin-bottom: 16px;
+            font-size: 30px;
+          }
+
+          .priceBox button {
+            min-height: 46px;
           }
 
           .driverStats,
@@ -1454,13 +1581,75 @@ export default function DriverDashboard() {
             grid-template-columns: 1fr;
           }
 
+          .driverStats {
+            gap: 10px;
+            margin: 14px 0;
+          }
+
+          .stat,
+          .panel {
+            border-radius: 18px;
+          }
+
+          .stat {
+            padding: 16px;
+          }
+
+          .stat strong {
+            font-size: 26px;
+          }
+
+          .panel {
+            padding: 16px;
+          }
+
+          .panelTitle h3 {
+            font-size: 21px;
+          }
+
+          .panelTitle button {
+            width: 100%;
+            min-height: 42px;
+          }
+
+          .missionRow,
+          .inviteRow {
+            gap: 12px;
+            padding: 14px;
+          }
+
+          .missionIcon {
+            width: 42px;
+            height: 42px;
+          }
+
+          .missionCompany,
+          .verifiedCompanyBadge,
+          .appliedBadge {
+            max-width: 100%;
+          }
+
           .matchBox {
             text-align: left;
           }
 
           .calendarMini {
-            grid-template-columns: repeat(5, minmax(54px, 1fr));
-            overflow-x: auto;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 6px;
+            overflow: visible;
+          }
+
+          .day {
+            padding: 10px 5px;
+            border-radius: 12px;
+          }
+
+          .day span {
+            font-size: 10px;
+          }
+
+          .day strong {
+            font-size: 17px;
           }
 
           .missionRight,
@@ -1471,8 +1660,66 @@ export default function DriverDashboard() {
           }
 
           .missionRight {
+            width: 100%;
             min-width: 0;
             align-items: flex-start;
+            gap: 10px;
+          }
+
+          .matchBox {
+            width: 100%;
+            min-width: 0;
+          }
+
+          .missionActions,
+          .inviteActions {
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+          }
+
+          .missionActions button,
+          .inviteActions button {
+            width: 100%;
+            min-height: 42px;
+          }
+
+          .nextCard {
+            border-radius: 16px;
+          }
+
+          .modalOverlay {
+            align-items: end;
+            padding: 12px;
+          }
+
+          .missionModal {
+            width: 100%;
+            max-height: calc(100svh - 24px);
+            overflow-y: auto;
+            border-radius: 22px;
+            padding: 22px 18px;
+          }
+
+          .missionModal h2 {
+            margin-right: 44px;
+            font-size: 24px;
+            line-height: 1.08;
+          }
+
+          .applicationNotice {
+            right: 12px;
+            bottom: 12px;
+            width: calc(100vw - 24px);
+            border-radius: 16px;
+            box-sizing: border-box;
+          }
+        }
+
+        @media (max-width: 390px) {
+          .calendarMini {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
           }
         }
       `}</style>

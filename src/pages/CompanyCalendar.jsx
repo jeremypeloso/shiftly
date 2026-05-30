@@ -1,9 +1,22 @@
+import { useEffect, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 
 export default function CompanyCalendar() {
+  const [compactCalendar, setCompactCalendar] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 760px)");
+
+    const updateCalendarMode = () => setCompactCalendar(mediaQuery.matches);
+    updateCalendarMode();
+
+    mediaQuery.addEventListener("change", updateCalendarMode);
+    return () => mediaQuery.removeEventListener("change", updateCalendarMode);
+  }, []);
+
   const missions = [
     {
       title: "Ouverte · CDG → Rouen",
@@ -36,14 +49,19 @@ export default function CompanyCalendar() {
 
       <div className="calendar-card">
         <FullCalendar
+          key={compactCalendar ? "compact" : "desktop"}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="dayGridMonth"
+          initialView={compactCalendar ? "timeGridDay" : "dayGridMonth"}
           locale="fr"
           height="auto"
+          aspectRatio={compactCalendar ? 0.8 : 1.55}
+          dayMaxEventRows={compactCalendar ? 2 : 3}
+          slotMinTime="05:00:00"
+          slotMaxTime="22:00:00"
           headerToolbar={{
-            left: "prev,next today",
+            left: "prev,next",
             center: "title",
-            right: "dayGridMonth,timeGridWeek,timeGridDay",
+            right: compactCalendar ? "today" : "dayGridMonth,timeGridWeek,timeGridDay",
           }}
           buttonText={{
             today: "Aujourd’hui",
@@ -89,9 +107,12 @@ export default function CompanyCalendar() {
           border-radius: 28px;
           padding: 24px;
           box-shadow: 0 30px 80px rgba(0,0,0,0.28);
+          overflow: hidden;
         }
 
         .fc {
+          width: 100%;
+          min-width: 0;
           font-family: Inter, Arial, sans-serif;
         }
 
@@ -121,12 +142,69 @@ export default function CompanyCalendar() {
           .calendar-card {
             padding: 12px;
             border-radius: 20px;
-            overflow-x: auto;
+            overflow: hidden;
           }
 
           .fc-toolbar {
             flex-direction: column;
             gap: 10px;
+          }
+
+          .fc-toolbar-title {
+            font-size: 18px !important;
+            line-height: 1.2;
+            text-align: center;
+          }
+
+          .fc-header-toolbar {
+            margin-bottom: 12px !important;
+          }
+
+          .fc-button {
+            padding: 7px 10px !important;
+            font-size: 12px !important;
+          }
+
+          .fc-event {
+            font-size: 12px !important;
+            line-height: 1.25;
+            white-space: normal;
+          }
+
+          .fc-timegrid-slot {
+            height: 34px;
+          }
+
+          .fc-timegrid-axis-cushion,
+          .fc-timegrid-slot-label-cushion {
+            font-size: 11px;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .calendar-page {
+            padding: 18px 10px;
+          }
+
+          .header {
+            margin-bottom: 16px;
+          }
+
+          .header h1 {
+            font-size: 26px;
+            line-height: 1.05;
+          }
+
+          .calendar-card {
+            padding: 10px;
+            border-radius: 16px;
+          }
+
+          .fc-toolbar-chunk {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 6px;
           }
         }
       `}</style>

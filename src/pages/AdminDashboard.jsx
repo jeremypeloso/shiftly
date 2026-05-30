@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser } from "../lib/auth";
+import { sendNotificationEmail } from "../lib/notifications";
 
 const missionStatuses = ["Ouverte", "Pourvue", "Terminée", "Annulée"];
 
@@ -236,16 +237,22 @@ export default function AdminDashboard() {
     }
 
     if (selectedReport.reported_by) {
-      await supabase.from("notifications").insert([
-        {
-          user_id: selectedReport.reported_by,
-          title: "Réponse de l'administration",
-          message: adminResponse,
-          type: "admin_response",
-          ticket_id: selectedReport.ticket_id,
-        },
-      ]);
-    }
+  const notification = {
+    user_id: selectedReport.reported_by,
+    title: "Réponse de l'administration",
+    message: adminResponse,
+    type: "admin_response",
+    ticket_id: selectedReport.ticket_id,
+  };
+
+  await supabase.from("notifications").insert([notification]);
+  await sendNotificationEmail({
+    userId: notification.user_id,
+    title: notification.title,
+    message: notification.message,
+    type: notification.type,
+  });
+}
 
     setPopup({
       type: "success",
@@ -729,7 +736,7 @@ export default function AdminDashboard() {
         }
 
         .homeButton {
-          margin-top: auto;
+          margin-top: 8px;
           width: 100%;
           background: rgba(255, 255, 255, 0.08);
           color: white;
